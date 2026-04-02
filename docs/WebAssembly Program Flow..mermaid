@@ -1,0 +1,55 @@
+graph TD
+    subgraph Input_and_Validation["Input and Validation"]
+        A["<b>WebAssembly Module</b><br/>.wasm File"] --> B["Decoding<br/>Binary Format"]
+        B --> C["Validation<br/>Type Checker"]
+    end
+
+    subgraph Module_Structure["Module Structure"]
+        C --> D["Module Instance<br/><i>Module Instance</i>"]
+        
+        D --> E["<b>Types</b><br/><i>Types</i><br/>function, struct, array"]
+        D --> F["<b>Functions</b><br/><i>Functions</i><br/>Parameters, Locals, Body"]
+        D --> G["<b>Tables</b><br/><i>Tables</i><br/>Array of References"]
+        D --> H["<b>Linear Memories</b><br/><i>Memories</i><br/>Array of Bytes"]
+        D --> I["<b>Globals</b><br/><i>Globals</i><br/>Mutable/Immutable Value"]
+        D --> J["<b>Tags</b><br/><i>Tags</i><br/>Exceptions"]
+        D --> K["<b>Exports</b><br/><i>Exports</i><br/>Name -> Entity"]
+        D --> L["<b>Imports</b><br/><i>Imports</i><br/>Host Entities"]
+    end
+
+    subgraph Abstract_Machine["<b>Abstract Machine</b>"]
+        M["<b>Current Instruction</b>"] --> N{"Execution"}
+
+        N --> O["<b>Operand Stack</b><br/>Value Stack"]
+        N --> P["<b>Control Stack</b><br/>Frames, Labels, Handlers"]
+
+        subgraph Store_Access["Store Access"]
+            N -- load/store --> Q["<b>Store</b><br/>Global State"]
+            Q --> R["Instances<br/>Functions, Tables, Memories,<br/>Globals, Data, Aggregates"]
+        end
+
+        subgraph Operations["Operations"]
+            N --> S["<b>Instruction Core</b><br/>- Parametric (drop, select)<br/>- Control (block, loop, br)<br/>- Variables (local.get/set)<br/>- Memory (i32.load/store)<br/>- References (ref.null, ref.func)<br/>- Aggregates (struct.new, array.get)"]
+        end
+
+        N --> T["<b>Result</b><br/>values / exception / trap"]
+    end
+
+    subgraph Environment_Interaction["Environment Interaction"]
+        D -- Exports --> U["<b>Host Environment</b><br/>Browser, Operating System"]
+        U -- Imports --> D
+        U -- "Invokes Exported Function" --> M
+    end
+
+    subgraph Lifecycle["Lifecycle"]
+        V["Instantiation<br/><i>Instantiation</i>"] --> W["Initialization<br/>Memories, Tables"]
+        W --> X["Execution of<br/>Start Function"]
+        X --> D
+    end
+
+    C -- "Valid Module" --> V
+    
+    style Input_and_Validation fill:#f9f,stroke:#333,stroke-width:2px
+    style Abstract_Machine fill:#ccf,stroke:#333,stroke-width:2px
+    style Environment_Interaction fill:#cfc,stroke:#333,stroke-width:2px
+    style Lifecycle fill:#ffc,stroke:#333,stroke-width:2px

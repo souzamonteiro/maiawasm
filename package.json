@@ -1,0 +1,16 @@
+{
+  "name": "wat-assembler-tests",
+  "version": "1.0.0",
+  "description": "Test suite for WAT assembler",
+  "scripts": {
+    "test": "node tests/run-tests.js",
+    "test:watch": "nodemon --watch tests/fixtures --watch tests/expected --watch wat-assembler.js --exec 'npm test'",
+    "test:generate": "node tests/generate-expected.js",
+    "test:clean": "rm -rf tests/outputs/*",
+    "test:validate": "for f in tests/outputs/*.wasm; do wasm-validate $f; done",
+    "test:all": "npm run test:clean && npm run test:generate && npm run test"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}

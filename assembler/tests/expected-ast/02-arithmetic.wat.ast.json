@@ -1,0 +1,2230 @@
+{
+  "kind": "nt",
+  "name": "wat",
+  "begin": 0,
+  "children": [
+    {
+      "kind": "nt",
+      "name": "watBody",
+      "begin": 83,
+      "children": [
+        {
+          "kind": "nt",
+          "name": "module",
+          "begin": 83,
+          "children": [
+            {
+              "kind": "t",
+              "token": "'('",
+              "text": "("
+            },
+            {
+              "kind": "t",
+              "token": "'module'",
+              "text": "module"
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 107,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "funcDef",
+                  "begin": 107,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'func'",
+                      "text": "func"
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "id",
+                      "begin": 113,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "identifier",
+                          "text": "$add"
+                        }
+                      ],
+                      "end": 117
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "typeuse",
+                      "begin": 118,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 118,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 125,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$a"
+                                }
+                              ],
+                              "end": 127
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 128,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 131
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 132
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 133,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 140,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$b"
+                                }
+                              ],
+                              "end": 142
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 143,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 146
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 147
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "resultDecl",
+                          "begin": 148,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'result'",
+                              "text": "result"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 156,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 159
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 160
+                        }
+                      ],
+                      "end": 160
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "expr",
+                      "begin": 165,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 165,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 165,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 165,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 175,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 175,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$a"
+                                            }
+                                          ],
+                                          "end": 177
+                                        }
+                                      ],
+                                      "end": 177
+                                    }
+                                  ],
+                                  "end": 177
+                                }
+                              ],
+                              "end": 177
+                            }
+                          ],
+                          "end": 177
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 182,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 182,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 182,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 192,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 192,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$b"
+                                            }
+                                          ],
+                                          "end": 194
+                                        }
+                                      ],
+                                      "end": 194
+                                    }
+                                  ],
+                                  "end": 194
+                                }
+                              ],
+                              "end": 194
+                            }
+                          ],
+                          "end": 194
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 199,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 199,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 199,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 199,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.add"
+                                        }
+                                      ],
+                                      "end": 206
+                                    }
+                                  ],
+                                  "end": 206
+                                }
+                              ],
+                              "end": 206
+                            }
+                          ],
+                          "end": 206
+                        }
+                      ],
+                      "end": 206
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 207
+                }
+              ],
+              "end": 207
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 230,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "funcDef",
+                  "begin": 230,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'func'",
+                      "text": "func"
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "id",
+                      "begin": 236,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "identifier",
+                          "text": "$sub"
+                        }
+                      ],
+                      "end": 240
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "typeuse",
+                      "begin": 241,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 241,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 248,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$a"
+                                }
+                              ],
+                              "end": 250
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 251,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 254
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 255
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 256,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 263,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$b"
+                                }
+                              ],
+                              "end": 265
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 266,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 269
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 270
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "resultDecl",
+                          "begin": 271,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'result'",
+                              "text": "result"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 279,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 282
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 283
+                        }
+                      ],
+                      "end": 283
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "expr",
+                      "begin": 288,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 288,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 288,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 288,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 298,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 298,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$a"
+                                            }
+                                          ],
+                                          "end": 300
+                                        }
+                                      ],
+                                      "end": 300
+                                    }
+                                  ],
+                                  "end": 300
+                                }
+                              ],
+                              "end": 300
+                            }
+                          ],
+                          "end": 300
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 305,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 305,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 305,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 315,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 315,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$b"
+                                            }
+                                          ],
+                                          "end": 317
+                                        }
+                                      ],
+                                      "end": 317
+                                    }
+                                  ],
+                                  "end": 317
+                                }
+                              ],
+                              "end": 317
+                            }
+                          ],
+                          "end": 317
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 322,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 322,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 322,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 322,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.sub"
+                                        }
+                                      ],
+                                      "end": 329
+                                    }
+                                  ],
+                                  "end": 329
+                                }
+                              ],
+                              "end": 329
+                            }
+                          ],
+                          "end": 329
+                        }
+                      ],
+                      "end": 329
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 330
+                }
+              ],
+              "end": 330
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 356,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "funcDef",
+                  "begin": 356,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'func'",
+                      "text": "func"
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "id",
+                      "begin": 362,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "identifier",
+                          "text": "$mul"
+                        }
+                      ],
+                      "end": 366
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "typeuse",
+                      "begin": 367,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 367,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 374,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$a"
+                                }
+                              ],
+                              "end": 376
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 377,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 380
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 381
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 382,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 389,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$b"
+                                }
+                              ],
+                              "end": 391
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 392,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 395
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 396
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "resultDecl",
+                          "begin": 397,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'result'",
+                              "text": "result"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 405,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 408
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 409
+                        }
+                      ],
+                      "end": 409
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "expr",
+                      "begin": 414,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 414,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 414,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 414,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 424,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 424,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$a"
+                                            }
+                                          ],
+                                          "end": 426
+                                        }
+                                      ],
+                                      "end": 426
+                                    }
+                                  ],
+                                  "end": 426
+                                }
+                              ],
+                              "end": 426
+                            }
+                          ],
+                          "end": 426
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 431,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 431,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 431,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 441,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 441,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$b"
+                                            }
+                                          ],
+                                          "end": 443
+                                        }
+                                      ],
+                                      "end": 443
+                                    }
+                                  ],
+                                  "end": 443
+                                }
+                              ],
+                              "end": 443
+                            }
+                          ],
+                          "end": 443
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 448,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 448,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 448,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 448,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.mul"
+                                        }
+                                      ],
+                                      "end": 455
+                                    }
+                                  ],
+                                  "end": 455
+                                }
+                              ],
+                              "end": 455
+                            }
+                          ],
+                          "end": 455
+                        }
+                      ],
+                      "end": 455
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 456
+                }
+              ],
+              "end": 456
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 476,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "funcDef",
+                  "begin": 476,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'func'",
+                      "text": "func"
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "id",
+                      "begin": 482,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "identifier",
+                          "text": "$div"
+                        }
+                      ],
+                      "end": 486
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "typeuse",
+                      "begin": 487,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 487,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 494,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$a"
+                                }
+                              ],
+                              "end": 496
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 497,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 500
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 501
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 502,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 509,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$b"
+                                }
+                              ],
+                              "end": 511
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 512,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 515
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 516
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "resultDecl",
+                          "begin": 517,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'result'",
+                              "text": "result"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 525,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 528
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 529
+                        }
+                      ],
+                      "end": 529
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "expr",
+                      "begin": 534,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 534,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 534,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 534,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 544,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 544,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$a"
+                                            }
+                                          ],
+                                          "end": 546
+                                        }
+                                      ],
+                                      "end": 546
+                                    }
+                                  ],
+                                  "end": 546
+                                }
+                              ],
+                              "end": 546
+                            }
+                          ],
+                          "end": 546
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 551,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 551,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 551,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 561,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 561,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$b"
+                                            }
+                                          ],
+                                          "end": 563
+                                        }
+                                      ],
+                                      "end": 563
+                                    }
+                                  ],
+                                  "end": 563
+                                }
+                              ],
+                              "end": 563
+                            }
+                          ],
+                          "end": 563
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 568,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 568,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 568,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 568,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.div_s"
+                                        }
+                                      ],
+                                      "end": 577
+                                    }
+                                  ],
+                                  "end": 577
+                                }
+                              ],
+                              "end": 577
+                            }
+                          ],
+                          "end": 577
+                        }
+                      ],
+                      "end": 577
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 578
+                }
+              ],
+              "end": 578
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 619,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "funcDef",
+                  "begin": 619,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'func'",
+                      "text": "func"
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "id",
+                      "begin": 625,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "identifier",
+                          "text": "$mixed"
+                        }
+                      ],
+                      "end": 631
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "typeuse",
+                      "begin": 632,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 632,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 639,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$a"
+                                }
+                              ],
+                              "end": 641
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 642,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 645
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 646
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 647,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 654,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$b"
+                                }
+                              ],
+                              "end": 656
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 657,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 660
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 661
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "paramDecl",
+                          "begin": 662,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'param'",
+                              "text": "param"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 669,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$c"
+                                }
+                              ],
+                              "end": 671
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 672,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 675
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 676
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "resultDecl",
+                          "begin": 677,
+                          "children": [
+                            {
+                              "kind": "t",
+                              "token": "'('",
+                              "text": "("
+                            },
+                            {
+                              "kind": "t",
+                              "token": "'result'",
+                              "text": "result"
+                            },
+                            {
+                              "kind": "nt",
+                              "name": "valueType",
+                              "begin": 685,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "'i32'",
+                                  "text": "i32"
+                                }
+                              ],
+                              "end": 688
+                            },
+                            {
+                              "kind": "t",
+                              "token": "')'",
+                              "text": ")"
+                            }
+                          ],
+                          "end": 689
+                        }
+                      ],
+                      "end": 689
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "expr",
+                      "begin": 694,
+                      "children": [
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 694,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 694,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 694,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 704,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 704,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$a"
+                                            }
+                                          ],
+                                          "end": 706
+                                        }
+                                      ],
+                                      "end": 706
+                                    }
+                                  ],
+                                  "end": 706
+                                }
+                              ],
+                              "end": 706
+                            }
+                          ],
+                          "end": 706
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 711,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 711,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 711,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 721,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 721,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$b"
+                                            }
+                                          ],
+                                          "end": 723
+                                        }
+                                      ],
+                                      "end": 723
+                                    }
+                                  ],
+                                  "end": 723
+                                }
+                              ],
+                              "end": 723
+                            }
+                          ],
+                          "end": 723
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 728,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 728,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 728,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 728,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.add"
+                                        }
+                                      ],
+                                      "end": 735
+                                    }
+                                  ],
+                                  "end": 735
+                                }
+                              ],
+                              "end": 735
+                            }
+                          ],
+                          "end": 735
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 740,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 740,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 740,
+                                  "children": [
+                                    {
+                                      "kind": "t",
+                                      "token": "'local.get'",
+                                      "text": "local.get"
+                                    },
+                                    {
+                                      "kind": "nt",
+                                      "name": "index",
+                                      "begin": 750,
+                                      "children": [
+                                        {
+                                          "kind": "nt",
+                                          "name": "id",
+                                          "begin": 750,
+                                          "children": [
+                                            {
+                                              "kind": "t",
+                                              "token": "identifier",
+                                              "text": "$c"
+                                            }
+                                          ],
+                                          "end": 752
+                                        }
+                                      ],
+                                      "end": 752
+                                    }
+                                  ],
+                                  "end": 752
+                                }
+                              ],
+                              "end": 752
+                            }
+                          ],
+                          "end": 752
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "instr",
+                          "begin": 757,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "seqInstr",
+                              "begin": 757,
+                              "children": [
+                                {
+                                  "kind": "nt",
+                                  "name": "nonBlockInstr",
+                                  "begin": 757,
+                                  "children": [
+                                    {
+                                      "kind": "nt",
+                                      "name": "memLikeInstr",
+                                      "begin": 757,
+                                      "children": [
+                                        {
+                                          "kind": "t",
+                                          "token": "dottedName",
+                                          "text": "i32.mul"
+                                        }
+                                      ],
+                                      "end": 764
+                                    }
+                                  ],
+                                  "end": 764
+                                }
+                              ],
+                              "end": 764
+                            }
+                          ],
+                          "end": 764
+                        }
+                      ],
+                      "end": 764
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 765
+                }
+              ],
+              "end": 765
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 771,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "exportDef",
+                  "begin": 771,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'export'",
+                      "text": "export"
+                    },
+                    {
+                      "kind": "t",
+                      "token": "string",
+                      "text": "\"add\""
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "exportDesc",
+                      "begin": 785,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "'('",
+                          "text": "("
+                        },
+                        {
+                          "kind": "t",
+                          "token": "'func'",
+                          "text": "func"
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "index",
+                          "begin": 791,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 791,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$add"
+                                }
+                              ],
+                              "end": 795
+                            }
+                          ],
+                          "end": 795
+                        },
+                        {
+                          "kind": "t",
+                          "token": "')'",
+                          "text": ")"
+                        }
+                      ],
+                      "end": 796
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 797
+                }
+              ],
+              "end": 797
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 800,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "exportDef",
+                  "begin": 800,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'export'",
+                      "text": "export"
+                    },
+                    {
+                      "kind": "t",
+                      "token": "string",
+                      "text": "\"sub\""
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "exportDesc",
+                      "begin": 814,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "'('",
+                          "text": "("
+                        },
+                        {
+                          "kind": "t",
+                          "token": "'func'",
+                          "text": "func"
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "index",
+                          "begin": 820,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 820,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$sub"
+                                }
+                              ],
+                              "end": 824
+                            }
+                          ],
+                          "end": 824
+                        },
+                        {
+                          "kind": "t",
+                          "token": "')'",
+                          "text": ")"
+                        }
+                      ],
+                      "end": 825
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 826
+                }
+              ],
+              "end": 826
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 829,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "exportDef",
+                  "begin": 829,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'export'",
+                      "text": "export"
+                    },
+                    {
+                      "kind": "t",
+                      "token": "string",
+                      "text": "\"mul\""
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "exportDesc",
+                      "begin": 843,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "'('",
+                          "text": "("
+                        },
+                        {
+                          "kind": "t",
+                          "token": "'func'",
+                          "text": "func"
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "index",
+                          "begin": 849,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 849,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$mul"
+                                }
+                              ],
+                              "end": 853
+                            }
+                          ],
+                          "end": 853
+                        },
+                        {
+                          "kind": "t",
+                          "token": "')'",
+                          "text": ")"
+                        }
+                      ],
+                      "end": 854
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 855
+                }
+              ],
+              "end": 855
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 858,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "exportDef",
+                  "begin": 858,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'export'",
+                      "text": "export"
+                    },
+                    {
+                      "kind": "t",
+                      "token": "string",
+                      "text": "\"div\""
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "exportDesc",
+                      "begin": 872,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "'('",
+                          "text": "("
+                        },
+                        {
+                          "kind": "t",
+                          "token": "'func'",
+                          "text": "func"
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "index",
+                          "begin": 878,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 878,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$div"
+                                }
+                              ],
+                              "end": 882
+                            }
+                          ],
+                          "end": 882
+                        },
+                        {
+                          "kind": "t",
+                          "token": "')'",
+                          "text": ")"
+                        }
+                      ],
+                      "end": 883
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 884
+                }
+              ],
+              "end": 884
+            },
+            {
+              "kind": "nt",
+              "name": "moduleField",
+              "begin": 887,
+              "children": [
+                {
+                  "kind": "nt",
+                  "name": "exportDef",
+                  "begin": 887,
+                  "children": [
+                    {
+                      "kind": "t",
+                      "token": "'('",
+                      "text": "("
+                    },
+                    {
+                      "kind": "t",
+                      "token": "'export'",
+                      "text": "export"
+                    },
+                    {
+                      "kind": "t",
+                      "token": "string",
+                      "text": "\"mixed\""
+                    },
+                    {
+                      "kind": "nt",
+                      "name": "exportDesc",
+                      "begin": 903,
+                      "children": [
+                        {
+                          "kind": "t",
+                          "token": "'('",
+                          "text": "("
+                        },
+                        {
+                          "kind": "t",
+                          "token": "'func'",
+                          "text": "func"
+                        },
+                        {
+                          "kind": "nt",
+                          "name": "index",
+                          "begin": 909,
+                          "children": [
+                            {
+                              "kind": "nt",
+                              "name": "id",
+                              "begin": 909,
+                              "children": [
+                                {
+                                  "kind": "t",
+                                  "token": "identifier",
+                                  "text": "$mixed"
+                                }
+                              ],
+                              "end": 915
+                            }
+                          ],
+                          "end": 915
+                        },
+                        {
+                          "kind": "t",
+                          "token": "')'",
+                          "text": ")"
+                        }
+                      ],
+                      "end": 916
+                    },
+                    {
+                      "kind": "t",
+                      "token": "')'",
+                      "text": ")"
+                    }
+                  ],
+                  "end": 917
+                }
+              ],
+              "end": 917
+            },
+            {
+              "kind": "t",
+              "token": "')'",
+              "text": ")"
+            }
+          ],
+          "end": 919
+        }
+      ],
+      "end": 919
+    }
+  ],
+  "end": 919
+}
