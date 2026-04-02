@@ -1,109 +1,16 @@
-#!/usr/bin/env node
-
 /**
- * WebAssembly Text Format (WAT) Assembler
- * 
- * Converts WebAssembly text format (.wat) to binary WebAssembly (.wasm)
- * using a generated parser and tree-based code generation.
- * 
- * Follows the sample-calculator.js pattern:
- * - Use ParseTreeCollector to build parse tree
- * - Traverse tree with recursive visitor functions
- * - Emit bytecode during traversal
- * 
- * Usage:
- *   wat-assembler.js input.wat [output.wasm]
- *   wat-assembler.js input.wat --json        (output parse tree as JSON)
- *   wat-assembler.js input.wat --xml         (output parse tree as XML)
+ * WAT to WASM Assembler
+ * Converts WebAssembly Text format to WASM binary
  */
-
-const fs = require('fs');
-const path = require('path');
-
-const Parser = require('./wat-parser');
-const { ParseTreeCollector } = require('./parse-tree-collector');
+const SimpleWATParser = require('./wat-parser-adapter.js');
 
 // ============================================================================
-// UTILITY FUNCTIONS - TREE NAVIGATION
+// ENCODING HELPERS
 // ============================================================================
 
-function assertNonterminal(node, name) {
-  if (!node || node.kind !== 'nonterminal' || node.name !== name) {
-    throw new Error(
-      `Expected nonterminal '${name}', ` +
-      `got '${node ? node.name || node.kind : 'null'}'`
-    );
-  }
-}
-
-function assertTerminal(node) {
-  if (!node || node.kind !== 'terminal') {
-    throw new Error(`Expected terminal node, got ${node ? node.kind : 'null'}`);
-  }
-}
-
-/**
- * Get first child nonterminal matching name
- */
-function getChildByName(parent, name, index = 0) {
-  const children = parent.children || [];
-  let count = 0;
-  for (const child of children) {
-    if (child.kind === 'nonterminal' && child.name === name) {
-      if (count === index) return child;
-      count++;
-    }
-  }
-  return null;
-}
-
-/**
- * Get first child terminal matching token type
- */
-function getChildByToken(parent, tokenType, index = 0) {
-  const children = parent.children || [];
-  let count = 0;
-  for (const child of children) {
-    if (child.kind === 'terminal' && child.token === tokenType) {
-      if (count === index) return child;
-      count++;
-    }
-  }
-  return null;
-}
-
-/**
- * Get terminal value (must be a terminal)
- */
-function getTerminalValue(node) {
-  assertTerminal(node);
-  return node.value;
-}
-
-/**
- * Get all children matching name
- */
-function getChildValues(parent, nodeName) {
-  const result = [];
-  const children = parent.children || [];
-  for (const child of children) {
-    if (child.kind === 'nonterminal' && child.name === nodeName) {
-      result.push(child);
-    }
-  }
-  return result;
-}
-
-// ============================================================================
-// ENCODING FUNCTIONS
-// ============================================================================
-
-/**
- * Encode an unsigned LEB128 integer
- */
 function encodeULEB128(value) {
   const bytes = [];
-  while (value >= 0x80) {
+  while ((value & 0xffffff80) !== 0) {
     bytes.push((value & 0x7f) | 0x80);
     value >>>= 7;
   }
@@ -111,376 +18,306 @@ function encodeULEB128(value) {
   return Buffer.from(bytes);
 }
 
-/**
- * Encode a signed LEB128 integer
- */
 function encodeSLEB128(value) {
   const bytes = [];
-  let more = true;
-  while (more) {
+  while (true) {
     let byte = value & 0x7f;
     value >>= 7;
-    more = !((value === 0 && (byte & 0x40) === 0) || (value === -1 && (byte & 0x40) !== 0));
-    if (more) byte |= 0x80;
-    bytes.push(byte);
+    if ((value === 0 && (byte & 0x40) === 0) || (value === -1 && (byte & 0x40) !== 0)) {
+      bytes.push(byte);
+      break;
+    }
+    bytes.push(byte | 0x80);
   }
   return Buffer.from(bytes);
 }
 
-/**
- * Encode an IEEE 754 32-bit float (little-endian)
- */
-function encodeF32(value) {
-  const buf = Buffer.alloc(4);
-  buf.writeFloatLE(parseFloat(value), 0);
-  return buf;
-}
-
-/**
- * Encode an IEEE 754 64-bit double (little-endian)
- */
-function encodeF64(value) {
-  const buf = Buffer.alloc(8);
-  buf.writeDoubleLE(parseFloat(value), 0);
-  return buf;
-}
-
 // ============================================================================
-// ASSEMBLER CONTEXT
+// CODE BUFFER - Manages bytecode emission
 // ============================================================================
 
-class WatContext {
+class CodeBuffer {
   constructor() {
-    // Module structure
-    this.functions = [];       // Function definitions
-    this.types = [];           // Type definitions
-    this.imports = [];         // Import entries
-    this.exports = [];         // Export entries
-    this.globals = [];         // Global variables
-    this.memories = [];        // Memory instances
-    this.tables = [];          // Table instances
-    this.datas = [];           // Data segments
-    this.elements = [];        // Element segments
-    this.start = null;         // Start function index
-    this.tags = [];            // Exception tag definitions
-    
-    // Code generation state
-    this.typeMap = new Map();  // Signature -> type index
-    this.functionIndices = new Map(); // Function name -> index
-    this.codeBuffers = [];     // Per-function bytecode
-    this.localNameMap = null;  // Current function's locals (name -> index)
-    this.labelStack = [];      // Stack of label contexts (for br/br_if)
+    this.bytes = [];
   }
 
-  addType(type) {
-    this.types.push(type);
-    return this.types.length - 1;
+  emit(byte) {
+    this.bytes.push(byte & 0xFF);
   }
 
-  addFunction(func) {
-    const idx = this.functions.length;
-    this.functions.push(func);
-    return idx;
-  }
-
-  addExport(name, kind, index) {
-    this.exports.push({ name, kind, index });
-  }
-
-  pushLabel(labelId) {
-    this.labelStack.push(labelId);
-  }
-
-  popLabel() {
-    return this.labelStack.pop();
-  }
-
-  currentLabel() {
-    return this.labelStack.length > 0 ? this.labelStack[this.labelStack.length - 1] : null;
-  }
-}
-
-// ============================================================================
-// TREE VISITORS - MODULE PROCESSING
-// ============================================================================
-
-function processWat(watNode, context) {
-  assertNonterminal(watNode, 'wat');
-  const watBody = getChildByName(watNode, 'watBody');
-  assertNonterminal(watBody, 'watBody');
-  
-  const moduleNode = getChildByName(watBody, 'module');
-  if (moduleNode) {
-    processModule(moduleNode, context);
-  }
-}
-
-function processModule(moduleNode, context) {
-  assertNonterminal(moduleNode, 'module');
-  const children = moduleNode.children || [];
-
-  // Iterate through all module fields
-  for (const child of children) {
-    if (child.kind !== 'nonterminal') continue;
-    if (child.name === 'moduleField') {
-      processModuleField(child, context);
+  emitBytes(buffer) {
+    if (Buffer.isBuffer(buffer)) {
+      this.bytes.push(...Array.from(buffer));
+    } else if (Array.isArray(buffer)) {
+      this.bytes.push(...buffer);
     }
   }
-}
 
-function processModuleField(fieldNode, context) {
-  const children = fieldNode.children || [];
-  const firstChild = children.find(c => c.kind === 'nonterminal');
-  
-  if (!firstChild) return;
+  emitULEB128(value) {
+    const buf = encodeULEB128(value);
+    this.emitBytes(buf);
+  }
 
-  switch (firstChild.name) {
-    case 'typeDef':
-      processTypeDef(firstChild, context);
-      break;
-    case 'importDef':
-      processImportDef(firstChild, context);
-      break;
-    case 'funcDef':
-      processFuncDef(firstChild, context);
-      break;
-    case 'globalDef':
-      processGlobalDef(firstChild, context);
-      break;
-    case 'memDef':
-      processMemDef(firstChild, context);
-      break;
-    case 'tableDef':
-      processTableDef(firstChild, context);
-      break;
-    case 'exportDef':
-      processExportDef(firstChild, context);
-      break;
-    case 'startDef':
-      processStartDef(firstChild, context);
-      break;
-    case 'dataDef':
-      processDataDef(firstChild, context);
-      break;
-    case 'elemDef':
-      processElemDef(firstChild, context);
-      break;
-    case 'tagDef':
-      processTagDef(firstChild, context);
-      break;
+  emitSLEB128(value) {
+    const buf = encodeSLEB128(value);
+    this.emitBytes(buf);
+  }
+
+  toBuffer() {
+    return Buffer.from(this.bytes);
   }
 }
 
 // ============================================================================
-// FIELD PROCESSORS (STUBS FOR IMPLEMENTATION)
+// WASM SECTION EMISSION
 // ============================================================================
 
-function processTypeDef(node, context) {
-  // TODO: Extract type definition and add to context.types
-  // Rule: typeDef ::= '(' 'type' id? rectype ')'
+function emitSection(id, content) {
+  const parts = [];
+  parts.push(Buffer.from([id]));
+  parts.push(encodeULEB128(content.length));
+  if (content.length > 0) {
+    parts.push(content);
+  }
+  return Buffer.concat(parts);
 }
 
-function processImportDef(node, context) {
-  // TODO: Process import statements
-  // Validates that imported items match declarations
-}
-
-function processFuncDef(node, context) {
-  // TODO: Parse function definition including:
-  // - Parameters (paramDecl)
-  // - Result types (resultDecl)
-  // - Local variables (localDecl)
-  // - Function body (expr / instr)
-}
-
-function processGlobalDef(node, context) {
-  // TODO: Parse global variable definitions
-  // globalDef ::= '(' 'global' id? globalType expr ')'
-}
-
-function processMemDef(node, context) {
-  // TODO: Parse memory definitions
-  // memDef ::= '(' 'memory' id? limits ')'
-}
-
-function processTableDef(node, context) {
-  // TODO: Parse table definitions
-  // tableDef ::= '(' 'table' id? limits reftype ... ')'
-}
-
-function processExportDef(node, context) {
-  // TODO: Process export statements
-  // exportDef ::= '(' 'export' string exportDesc ')'
-}
-
-function processStartDef(node, context) {
-  // TODO: Set start function
-  // startDef ::= '(' 'start' index ')'
-}
-
-function processDataDef(node, context) {
-  // TODO: Store data segment
-  // dataDef ::= '(' 'data' id? ... datastring ')'
-}
-
-function processElemDef(node, context) {
-  // TODO: Store element segment
-  // elemDef ::= '(' 'elem' id? ... elemList ')'
-}
-
-function processTagDef(node, context) {
-  // TODO: Define exception tag
-  // tagDef ::= '(' 'tag' id? tagType ')'
-}
-
-// ============================================================================
-// INSTRUCTION PROCESSING (STUBS FOR IMPLEMENTATION)
-// ============================================================================
-
-function processInstr(instrNode, context) {
-  // TODO: Process instruction and emit bytecode
-  // Dispatch on foldedInstr vs seqInstr
-  // Return bytecode buffer
-}
-
-function processExpr(exprNode, context) {
-  // TODO: Process expression (sequence of instructions)
-  // expr ::= instr*
-}
-
-// ============================================================================
-// BINARY OUTPUT
-// ============================================================================
-
-/**
- * Emit section with ID and contents
- */
-function emitSection(sectionId, contents) {
-  const size = encodeULEB128(contents.length);
-  return Buffer.concat([Buffer.from([sectionId]), size, contents]);
-}
-
-/**
- * Build final WASM module
- */
-function emitModule(context) {
+function emitModule(functions) {
   const parts = [];
 
-  // File signature and version
-  parts.push(Buffer.from([0x00, 0x61, 0x73, 0x6d])); // Magic: \0asm
-  parts.push(Buffer.from([0x01, 0x00, 0x00, 0x00])); // Version: 1
+  // Magic: \0asm
+  parts.push(Buffer.from([0x00, 0x61, 0x73, 0x6d]));
+  // Version: 1
+  parts.push(Buffer.from([0x01, 0x00, 0x00, 0x00]));
 
-  // TODO: Emit type section (id=1)
-  // TODO: Emit import section (id=2)
-  // TODO: Emit function section (id=3)
-  // TODO: Emit table section (id=4)
-  // TODO: Emit memory section (id=5)
-  // TODO: Emit global section (id=6)
-  // TODO: Emit export section (id=7)
-  // TODO: Emit start section (id=8)
-  // TODO: Emit element section (id=9)
-  // TODO: Emit code section (id=10)
-  // TODO: Emit data section (id=11)
-  // TODO: Emit data count section (id=12)
-  // Custom sections for names, producers, etc.
+  // Type section (id=1)
+  if (functions.length > 0) {
+    const typeContent = new CodeBuffer();
+    typeContent.emitULEB128(functions.length); // one type per function
+    for (const func of functions) {
+      typeContent.emit(0x60); // function type
+      typeContent.emitULEB128(func.params.length);
+      for (const param of func.params) {
+        typeContent.emit(getTypeCode(param));
+      }
+      typeContent.emitULEB128(func.results.length);
+      for (const result of func.results) {
+        typeContent.emit(getTypeCode(result));
+      }
+    }
+    parts.push(emitSection(0x01, typeContent.toBuffer()));
+  }
+
+  // Function section (id=3)
+  if (functions.length > 0) {
+    const funcContent = new CodeBuffer();
+    funcContent.emitULEB128(functions.length);
+    for (let i = 0; i < functions.length; i++) {
+      funcContent.emitULEB128(i); // type index
+    }
+    parts.push(emitSection(0x03, funcContent.toBuffer()));
+  }
+
+  // Code section (id=10)
+  if (functions.length > 0) {
+    const codeContent = new CodeBuffer();
+    codeContent.emitULEB128(functions.length);
+
+    for (const func of functions) {
+      const body = new CodeBuffer();
+      body.emitULEB128(0); // 0 local groups
+      body.emitBytes(func.code);
+      body.emit(0x0B); // end
+
+      const bodyBuf = body.toBuffer();
+      codeContent.emitULEB128(bodyBuf.length);
+      codeContent.emitBytes(bodyBuf);
+    }
+
+    parts.push(emitSection(0x0A, codeContent.toBuffer()));
+  }
 
   return Buffer.concat(parts);
 }
 
 // ============================================================================
-// MAIN ENTRY POINT
+// TYPE UTILITIES
 // ============================================================================
 
-function main() {
-  const args = process.argv.slice(2);
+function getTypeCode(type) {
+  const types = {
+    'i32': 0x7F,
+    'i64': 0x7E,
+    'f32': 0x7D,
+    'f64': 0x7C,
+  };
+  return types[type] || 0x7F;
+}
 
-  if (args.length === 0) {
-    console.error('Usage: wat-assembler.js input.wat [output.wasm]');
-    console.error('       wat-assembler.js input.wat --json   (show parse tree)');
-    console.error('       wat-assembler.js input.wat --xml    (show parse tree)');
-    process.exit(1);
-  }
+// ============================================================================
+// INSTRUCTION HANDLERS
+// ============================================================================
 
-  const inputFile = args[0];
-  let outputFile = args[1] || null;
-  let outputFormat = 'wasm'; // 'wasm', 'json', or 'xml'
+const OpcodeMap = {
+  // Control flow
+  'nop': 0x01,
+  'return': 0x0F,
 
-  if (outputFile === '--json') {
-    outputFormat = 'json';
-    outputFile = null;
-  } else if (outputFile === '--xml') {
-    outputFormat = 'xml';
-    outputFile = null;
-  }
+  // Numeric constants
+  'i32.const': 0x41,
+  'i64.const': 0x42,
+  'f32.const': 0x43,
+  'f64.const': 0x44,
 
-  // Read input
-  let inputContent;
-  try {
-    inputContent = fs.readFileSync(inputFile, 'utf8');
-  } catch (err) {
-    console.error(`❌ Error reading input: ${err.message}`);
-    process.exit(1);
-  }
+  // Numeric binary operations
+  'i32.add': 0x6A,
+  'i32.sub': 0x6B,
+  'i32.mul': 0x6C,
+  'i32.div_s': 0x6D,
+  'i32.div_u': 0x6E,
+  'i32.rem_s': 0x6F,
+  'i32.rem_u': 0x70,
+  'i32.and': 0x71,
+  'i32.or': 0x72,
+  'i32.xor': 0x73,
+  'i32.shl': 0x74,
+  'i32.shr_s': 0x75,
+  'i32.shr_u': 0x76,
+  'i32.rotl': 0x77,
+  'i32.rotr': 0x78,
 
-  // Parse to tree
-  let collector;
-  try {
-    collector = new ParseTreeCollector();
-    const parser = new Parser(inputContent, collector);
-    parser.parse();
-  } catch (err) {
-    console.error(`❌ Parse error: ${err.message}`);
-    process.exit(1);
-  }
+  'i64.add': 0x7C,
+  'i64.sub': 0x7D,
+  'i64.mul': 0x7E,
+  'i64.div_s': 0x7F,
+  'i64.div_u': 0x80,
 
-  // Output tree if requested
-  if (outputFormat === 'json') {
-    console.log(collector.toJSON());
+  'f32.add': 0x92,
+  'f32.sub': 0x93,
+  'f32.mul': 0x94,
+  'f32.div': 0x95,
+
+  'f64.add': 0xA0,
+  'f64.sub': 0xA1,
+  'f64.mul': 0xA2,
+  'f64.div': 0xA3,
+};
+
+function emitInstructions(ast, codeBuffer) {
+  if (!ast) return;
+
+  // Handle different AST node types
+  if (Array.isArray(ast)) {
+    for (const node of ast) {
+      emitInstructions(node, codeBuffer);
+    }
     return;
   }
 
-  if (outputFormat === 'xml') {
-    console.log(collector.toXml());
-    return;
+  if (ast.type && ast.type.startsWith('i32.') && OpcodeMap[ast.type]) {
+    const opcode = OpcodeMap[ast.type];
+    codeBuffer.emit(opcode);
+    
+    if (ast.type === 'i32.const' && ast.value !== undefined) {
+      codeBuffer.emitSLEB128(ast.value);
+    }
+  } else if (ast.type && OpcodeMap[ast.type]) {
+    const opcode = OpcodeMap[ast.type];
+    codeBuffer.emit(opcode);
   }
 
-  // Assemble to WASM
-  let wasmBuffer;
-  try {
-    const context = new WatContext();
-    processWat(collector.root, context);
-    wasmBuffer = emitModule(context);
-  } catch (err) {
-    console.error(`❌ Assembly error: ${err.message}`);
-    console.error(err.stack);
-    process.exit(1);
+  if (ast.children && Array.isArray(ast.children)) {
+    emitInstructions(ast.children, codeBuffer);
+  }
+}
+
+// ============================================================================
+// MAIN ASSEMBLER CLASS
+// ============================================================================
+
+class WatAssembler {
+  assemble(sourceWat) {
+    const parser = new SimpleWATParser(sourceWat);
+    const ast = parser.parse();
+
+    // Extract functions from AST
+    const functions = [];
+    
+    if (ast.type === 'module' && ast.children) {
+      for (const child of ast.children) {
+        if (child.type === 'func') {
+          const func = {
+            params: [],
+            results: [],
+            code: new CodeBuffer(),
+          };
+
+          // Parse parameters and result types
+          if (child.params) {
+            for (const param of child.params) {
+              func.params.push(param.type || 'i32');
+            }
+          }
+
+          if (child.results && child.results.length > 0) {
+            for (const result of child.results) {
+              func.results.push(result.type || 'i32');
+            }
+          } else {
+            // Default result type
+            func.results.push('i32');
+          }
+
+          // Parse function body (instructions)
+          if (child.body) {
+            this._emitInstructions(child.body, func.code);
+          }
+
+          functions.push(func);
+        }
+      }
+    }
+
+    return emitModule(functions);
   }
 
-  // Write output
-  if (!outputFile) {
-    const base = path.basename(inputFile, path.extname(inputFile));
-    outputFile = path.join(path.dirname(inputFile), `${base}.wasm`);
-  }
+  _emitInstructions(instructions, codeBuffer) {
+    for (const instr of instructions) {
+      if (!instr.type) continue;
 
-  try {
-    fs.writeFileSync(outputFile, wasmBuffer);
-    console.log(`✅ Generated: ${outputFile} (${wasmBuffer.length} bytes)`);
-  } catch (err) {
-    console.error(`❌ Error writing output: ${err.message}`);
-    process.exit(1);
+      const opcode = OpcodeMap[instr.type];
+      if (opcode === undefined) {
+        console.warn(`Unknown instruction: ${instr.type}`);
+        continue;
+      }
+
+      codeBuffer.emit(opcode);
+
+      // Handle operands
+      if ((instr.type === 'i32.const' || instr.type === 'i64.const' ||
+           instr.type === 'f32.const' || instr.type === 'f64.const') &&
+          instr.value) {
+        if (instr.value.type === 'literal') {
+          codeBuffer.emitSLEB128(instr.value.value);
+        } else if (instr.value.value !== undefined) {
+          codeBuffer.emitSLEB128(instr.value.value);
+        }
+      }
+
+      // Handle nested instructions
+      if (instr.children && Array.isArray(instr.children)) {
+        this._emitInstructions(instr.children, codeBuffer);
+      }
+    }
   }
 }
 
 if (require.main === module) {
-  main();
+  const code = `(module (func $add (param i32) (param i32) (result i32) local.get 0 local.get 1 i32.add))`;
+  const assembler = new WatAssembler();
+  const wasm = assembler.assemble(code);
+  console.log('✓ WASM binary length:', wasm.length);
+  console.log('✓ First 16 bytes:', wasm.slice(0, 16).toString('hex'));
 }
 
-module.exports = {
-  WatContext,
-  processWat,
-  processModule,
-  encodeULEB128,
-  encodeSLEB128,
-  encodeF32,
-  encodeF64,
-};
+module.exports = WatAssembler;
