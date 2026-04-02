@@ -1,0 +1,47 @@
+'use strict';
+const WatAssembler = require('./wat-assembler.js');
+const asm = new WatAssembler();
+
+// Each entry: { label, wat, expectError? }
+// Note: the WAT parser has a known lexer ordering issue where decimal float
+// literals (e.g. 3.14) are tokenized as nat+garbage. Use integer form instead.
+const TESTS = [
+  ['add function',
+    '(module (func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add) (export "add" (func $add)))'],
+  ['import + memory + data + global',
+    '(module (import "env" "log" (func $log (param i32))) (memory 1) (global $g (mut i32) (i32.const 0)) (data (i32.const 0) "hello") (func $run (result i32) i32.const 42 global.set $g global.get $g) (export "run" (func $run)) (export "mem" (memory 0)))'],
+  ['block + br_if',
+    '(module (func $f (param i32) (result i32) block local.get 0 i32.eqz br_if 0 i32.const 1 return end i32.const 0) (export "f" (func $f)))'],
+  ['loop + named locals',
+    '(module (func $f (param i32) (result i32) (local $acc i32) i32.const 0 local.set $acc loop local.get $acc local.get 0 i32.add local.set $acc br 0 end local.get $acc) (export "f" (func $f)))'],
+  ['if-else',
+    '(module (func $abs (param i32) (result i32) local.get 0 i32.const 0 i32.lt_s if (result i32) i32.const 0 local.get 0 i32.sub else local.get 0 end) (export "abs" (func $abs)))'],
+  ['table + call_indirect',
+    '(module (type $t (func (param i32) (result i32))) (table 1 funcref) (func $double (param i32) (result i32) local.get 0 i32.const 2 i32.mul) (elem (i32.const 0) func $double) (func $call (param i32 i32) (result i32) local.get 0 local.get 1 call_indirect (type $t)) (export "call" (func $call)))'],
+  ['memory load/store',
+    '(module (memory 1) (func $store (param i32 i32) local.get 0 local.get 1 i32.store) (func $load (param i32) (result i32) local.get 0 i32.load) (export "store" (func $store)) (export "load" (func $load)))'],
+  ['f64 integer const',
+    '(module (func $f (result f64) f64.const 42) (export "f" (func $f)))'],
+  ['i32 comparisons',
+    '(module (func $f (param i32 i32) (result i32) local.get 0 local.get 1 i32.lt_s) (export "f" (func $f)))'],
+  ['sign-extension i32.extend8_s',
+    '(module (func $f (param i32) (result i32) local.get 0 i32.extend8_s) (export "f" (func $f)))'],
+  ['global mut read/write',
+    '(module (global $x (mut i32) (i32.const 7)) (func $set (param i32) local.get 0 global.set $x) (func $get (result i32) global.get $x) (export "set" (func $set)) (export "get" (func $get)))'],
+  ['start section',
+    '(module (func $init) (start $init))'],
+];
+
+let pass = 0;
+for (const [label, wat] of TESTS) {
+  try {
+    const wasm = asm.assemble(wat);
+    const valid = WebAssembly.validate(wasm);
+    console.log((valid ? 'VALID  ' : 'INVALID') + ' [' + label + '] ' + wasm.length + 'B');
+    if (valid) pass++;
+  } catch (e) {
+    console.error('ERROR  [' + label + ']: ' + e.message);
+  }
+}
+console.log('\n' + pass + '/' + TESTS.length + ' WASM modules valid');
+process.exit(pass === TESTS.length ? 0 : 1);

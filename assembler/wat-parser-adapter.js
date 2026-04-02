@@ -1,6 +1,7 @@
 /**
  * Adapter wrapper for the generated WAT Parser
- * Converts the parser output to the AST format expected by wat-assembler.js
+ * Converts the event stream from the generated parser into a concrete parse
+ * tree that wat-assembler.js can traverse.
  */
 const OriginalParser = require('./wat-parser.js');
 
@@ -11,7 +12,7 @@ class ParseTreeCollector {
   }
 
   startNonterminal(name, pos) {
-    const node = { type: name, children: [], name: name };
+    const node = { type: name, children: [] };
     if (this.stack.length > 0) {
       this.stack[this.stack.length - 1].children.push(node);
     }
@@ -19,17 +20,45 @@ class ParseTreeCollector {
   }
 
   endNonterminal(name, pos) {
+    if (this.stack.length === 0) return;
+    const node = this.stack.pop();
+    // Only set root when the outermost nonterminal finishes
+    if (this.stack.length === 0) {
+      this.root = node;
+    }
+  }
+
+  abortNonterminal(name, pos) {
     if (this.stack.length > 0) {
-      this.root = this.stack.pop();
+      const node = this.stack.pop();
+      // Remove from parent's children (backtracking path discarded)
+      if (this.stack.length > 0) {
+        const parent = this.stack[this.stack.length - 1];
+        const idx = parent.children.lastIndexOf(node);
+        if (idx !== -1) parent.children.splice(idx, 1);
+      }
     }
   }
 
   terminal(type, text, pos) {
-    // Optionally capture terminals
+    if (this.stack.length > 0) {
+      this.stack[this.stack.length - 1].children.push({ type, text });
+    }
   }
 
-  error(msg) {
-    console.warn('Parser error:', msg);
+  checkpoint() {
+    // Save snapshot of children lengths for each frame so abortNonterminal
+    // can clean up correctly even if abortNonterminal is not called per node.
+    return this.stack.map(frame => ({ node: frame, len: frame.children.length }));
+  }
+
+  restore(mark) {
+    if (!Array.isArray(mark)) return;
+    // Trim stack back to saved depth and restore children arrays
+    this.stack.length = mark.length;
+    for (const { node, len } of mark) {
+      node.children.length = len;
+    }
   }
 }
 
@@ -43,8 +72,9 @@ class WATParser {
     const parser = new OriginalParser(this.input, collector);
 
     try {
-      const result = parser.parse();
-      return result || collector.root;
+      parser.parse();
+      if (!collector.root) throw new Error('Parser produced no tree');
+      return collector.root;
     } catch (err) {
       throw new Error(`WAT parse failed: ${err.message}`);
     }
