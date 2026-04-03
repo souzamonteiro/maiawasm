@@ -1511,6 +1511,9 @@ function normalizeBulkTableShorthands(sourceWat) {
   let out = sourceWat;
   out = out.replace(/\btable\.copy(?=\s*\))/g, 'table.copy 0 0');
   out = out.replace(/\btable\.init\s+([^()\s]+)(?=\s*\))/g, 'table.init $1 0');
+  out = out.replace(/\bmemory\.init\s+([^()\s]+)(?=\s*\))/g, 'memory.init $1 0');
+  out = out.replace(/\bmemory\.init(?=\s*\))/g, 'memory.init 0 0');
+  out = out.replace(/\bdata\.drop(?=\s*\))/g, 'data.drop 0');
   return out;
 }
 
