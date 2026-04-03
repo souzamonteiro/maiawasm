@@ -452,9 +452,19 @@ function resolveTypeUse(ctx, tuNode) {
 }
 
 function processTypeDef(ctx, node) {
-  const idx = ctx.types.length;
+  const firstIdx = ctx.types.length;
   const name = tNameOf(node);
-  if (name) ctx.typeIds.set(name, idx);
+  if (name) ctx.typeIds.set(name, firstIdx);
+
+  // A rectype may contain multiple subtypes/comptypes; collect all function
+  // type occurrences so recursive groups with several functypes can be indexed.
+  const funcTypes = tChildrenOfType(node, 'funcType');
+  if (funcTypes.length > 0) {
+    for (const ft of funcTypes) ctx.types.push(parseFuncTypeSig(ft));
+    return;
+  }
+
+  // Backward-compatible fallback: if parser shape differs, keep old behavior.
   const funcType = tFindFirst(node, 'funcType');
   ctx.types.push(parseFuncTypeSig(funcType));
 }
@@ -536,7 +546,8 @@ function processTagDef(ctx, node) {
   const idx = ctx.tags.length;
   const name = tNameOf(node);
   if (name) ctx.tagIds.set(name, idx);
-  ctx.tags.push({ imported: false });
+  const typeIdx = resolveTypeUse(ctx, tFindFirst(node, 'typeuse'));
+  ctx.tags.push({ imported: false, typeIdx });
 }
 
 function processExportDef(ctx, node) {
@@ -717,27 +728,79 @@ function genStartSection(ctx) {
   return encodeSection(0x08, encodeULEB128(ctx.start.idx || 0));
 }
 
+function genTagSection(ctx) {
+  const defs = ctx.tags.filter(t => !t.imported);
+  if (!defs.length) return null;
+  const bufs = [encodeULEB128(defs.length)];
+  for (const tag of defs) {
+    // exception tag type: attribute byte(0) + type index
+    bufs.push(Buffer.from([0x00]));
+    bufs.push(encodeULEB128(tag.typeIdx || 0));
+  }
+  return encodeSection(0x0d, Buffer.concat(bufs));
+}
+
+function emitElemTypeByte(node) {
+  const rt = tFindFirst(node, 'reftype') || node;
+  const terms = tAllTerminals(rt).map(t => t.text);
+  if (terms.includes('externref') || terms.includes('extern')) return Buffer.from([0x6f]);
+  if (terms.includes('exnref') || terms.includes('exn')) return Buffer.from([0x69]);
+  return Buffer.from([0x70]);
+}
+
 function genElementSection(ctx) {
   if (!ctx.elems.length) return null;
   const bufs = [encodeULEB128(ctx.elems.length)];
   for (const elem of ctx.elems) {
     const allTerms = tAllTerminals(elem).map(t => t.text);
     const isFuncForm = allTerms.includes('func');
+    const elemList = tChild(elem, 'elemList') || elem;
+    const hasDeclare = allTerms.includes('declare');
+    const tableUse = tChild(elem, 'tableUse');
+    const hasTableUse = !!tableUse;
+    const tableIdx = hasTableUse ? tResolveIdxNode(tFindFirst(tableUse, 'tableidx'), ctx.tableIds) : 0;
+    const offsetNode = tChild(elem, 'offset');
+    const hasOffset = !!offsetNode;
+
     if (isFuncForm) {
-      bufs.push(Buffer.from([0x00])); // active, table 0
-      const offsetNode = tChild(elem, 'offset');
-      if (offsetNode) {
+      // flags for funcidx element segments: 0(active0),1(passive),2(active tableidx),3(declare)
+      if (hasDeclare) {
+        bufs.push(Buffer.from([0x03, 0x00]));
+      } else if (hasTableUse) {
+        bufs.push(Buffer.from([0x02]));
+        bufs.push(encodeULEB128(tableIdx));
+        bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
+        bufs.push(Buffer.from([0x0b, 0x00]));
+      } else if (hasOffset) {
+        bufs.push(Buffer.from([0x00]));
         bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
         bufs.push(Buffer.from([0x0b]));
       } else {
-        bufs.push(Buffer.from([0x41, 0x00, 0x0b]));
+        bufs.push(Buffer.from([0x01, 0x00]));
       }
-      const funcIdxNodes = tChildrenOfType(tChild(elem, 'elemList') || elem, 'funcidx');
+
+      const funcIdxNodes = tChildrenOfType(elemList, 'funcidx');
       bufs.push(encodeULEB128(funcIdxNodes.length));
       for (const fi of funcIdxNodes) bufs.push(encodeULEB128(tResolveIdxNode(fi, ctx.funcIds)));
     } else {
-      bufs.push(Buffer.from([0x05, 0x70])); // passive, funcref
-      const exprs = tChildrenOfType(tChild(elem, 'elemList') || elem, 'elemExpr');
+      // flags for expr element segments: 4(active0),5(passive),6(active tableidx),7(declare)
+      if (hasDeclare) {
+        bufs.push(Buffer.from([0x07]));
+      } else if (hasTableUse) {
+        bufs.push(Buffer.from([0x06]));
+        bufs.push(encodeULEB128(tableIdx));
+        bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
+        bufs.push(Buffer.from([0x0b]));
+      } else if (hasOffset) {
+        bufs.push(Buffer.from([0x04]));
+        bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
+        bufs.push(Buffer.from([0x0b]));
+      } else {
+        bufs.push(Buffer.from([0x05]));
+      }
+
+      bufs.push(emitElemTypeByte(elemList));
+      const exprs = tChildrenOfType(elemList, 'elemExpr');
       bufs.push(encodeULEB128(exprs.length));
       for (const ex of exprs) {
         bufs.push(emitExprBuf(tChild(ex, 'expr') || ex, ctx, null));
@@ -1216,6 +1279,7 @@ class WatAssembler {
       genElementSection(ctx),
       genCodeSection(ctx),
       genDataSection(ctx),
+      genTagSection(ctx),
     ].filter(Boolean);
     return Buffer.concat(sections);
   }

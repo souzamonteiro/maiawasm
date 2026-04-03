@@ -30,6 +30,16 @@ const TESTS = [
     '(module (global $x (mut i32) (i32.const 7)) (func $set (param i32) local.get 0 global.set $x) (func $get (result i32) global.get $x) (export "set" (func $set)) (export "get" (func $get)))'],
   ['start section',
     '(module (func $init) (start $init))'],
+  ['elem passive func',
+    '(module (func $f) (elem func $f))'],
+  ['elem declare func',
+    '(module (func $f) (elem declare func $f))'],
+  ['elem active tableUse + offset',
+    '(module (table 2 funcref) (func $f) (elem (table 0) (offset (i32.const 0)) func $f))'],
+  ['elem passive expr list',
+    '(module (table 1 funcref) (elem funcref (item (ref.null func))))'],
+  ['tag local definition',
+    '(module (type $t (func)) (tag $e (type $t)))'],
 ];
 
 let pass = 0;
