@@ -73,8 +73,18 @@ const TESTS = [
   ['call_indirect no sig shorthand',
     '(module (table 1 funcref) (func $f) (elem (i32.const 0) func $f) (func $c (param i32) local.get 0 call_indirect) (export "c" (func $c)))'],
   ['return_call_indirect',
-    '(module (type $t (func (param i32) (result i32))) (table 1 funcref) (func $f (param i32) (result i32) local.get 0) (elem (i32.const 0) func $f) (func $c (param i32 i32) (result i32) local.get 0 local.get 1 return_call_indirect (type $t)) (export "c" (func $c)))'],  ['non-trapping conversion: i32.trunc_sat_f64_s',
-    '(module (func $f (param f64) (result i32) local.get 0 i32.trunc_sat_f64_s) (export \"f\" (func $f)))'],];
+    '(module (type $t (func (param i32) (result i32))) (table 1 funcref) (func $f (param i32) (result i32) local.get 0) (elem (i32.const 0) func $f) (func $c (param i32 i32) (result i32) local.get 0 local.get 1 return_call_indirect (type $t)) (export "c" (func $c)))'],
+  ['non-trapping conversion: i32.trunc_sat_f64_s',
+    '(module (func $f (param f64) (result i32) local.get 0 i32.trunc_sat_f64_s) (export "f" (func $f)))'],
+  ['br_table single default',
+    '(module (func (param i32) block local.get 0 br_table 0 end) (export "f" (func 0)))'],
+  ['br_table two labels switch pattern',
+    '(module (func $f (param i32) (result i32) (local $r i32) block $exit block $b1 block $b0 local.get 0 br_table $b0 $b1 $exit end i32.const 10 local.set $r br $exit end i32.const 20 local.set $r end local.get $r) (export "f" (func $f)))'],
+  ['br_table numeric labels',
+    '(module (func $f (param i32) (result i32) (local $r i32) block block block local.get 0 br_table 0 1 2 end i32.const 10 local.set $r br 1 end i32.const 20 local.set $r end local.get $r) (export "f" (func $f)))'],
+  ['nested blocks br_if switch',
+    '(module (func $f (param i32) (result i32) (local $r i32) block $exit block $case1 block $case0 local.get 0 i32.const 0 i32.eq br_if $case0 local.get 0 i32.const 1 i32.eq br_if $case1 i32.const 99 local.set $r br $exit end i32.const 10 local.set $r br $exit end i32.const 20 local.set $r end local.get $r) (export "f" (func $f)))'],
+];
 
 let pass = 0;
 for (const [label, wat] of TESTS) {

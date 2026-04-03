@@ -3687,7 +3687,8 @@ class Parser {
     if (count === 0) {
       throw new Error('Expected at least one labelidx');
     }
-    this.parselabelidx();
+    // Note: all labels (including the default) are consumed by the while loop above.
+    // The codegen treats the last label as the default target.
         _matched = true;
       } catch (e) {
         this.position = _ruleStart;
