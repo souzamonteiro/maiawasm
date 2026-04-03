@@ -187,7 +187,7 @@ nonBlockInstr     ::= 'nop'
                     | 'return_call_indirect' tableidx? typeuse
                     | 'br' labelidx
                     | 'br_if' labelidx
-                    | 'br_table' labelidx+ labelidx
+                    | 'br_table' labelidx+
                     | 'br_on_null' labelidx
                     | 'br_on_non_null' labelidx
                     | 'br_on_cast' labelidx reftype reftype
