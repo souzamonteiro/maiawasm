@@ -1504,13 +1504,24 @@ function emitNonBlock(node, ctx, localCtx) {
   return Buffer.concat(parts);
 }
 
+function normalizeBulkTableShorthands(sourceWat) {
+  // Conservative normalization for common shorthand forms before parser input.
+  // This only rewrites forms that are closed right away with ')' to avoid
+  // changing explicit or ambiguous argument lists.
+  let out = sourceWat;
+  out = out.replace(/\btable\.copy(?=\s*\))/g, 'table.copy 0 0');
+  out = out.replace(/\btable\.init\s+([^()\s]+)(?=\s*\))/g, 'table.init $1 0');
+  return out;
+}
+
 // ============================================================================
 // MAIN ASSEMBLER
 // ============================================================================
 
 class WatAssembler {
   assemble(sourceWat) {
-    const p = new WATParser(sourceWat);
+    const normalizedWat = normalizeBulkTableShorthands(sourceWat);
+    const p = new WATParser(normalizedWat);
     const tree = p.parse();
     const ctx = new ModuleContext(tree);
     buildSymbolTables(ctx);
