@@ -66,9 +66,15 @@ const TESTS = [
     '(module (table 1 funcref) (func $f) (elem (i32.const 0) func $f) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 table.init 0) (export "ops" (func $ops)))'],
   ['bulk memory: table.copy with explicit indices',
     '(module (table 2 funcref) (table 2 funcref) (func $f) (elem (table 0) (offset (i32.const 0)) func $f) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 table.copy 0 1) (export "ops" (func $ops)))'],
-  ['non-trapping conversion: i32.trunc_sat_f64_s',
-    '(module (func $f (param f64) (result i32) local.get 0 i32.trunc_sat_f64_s) (export "f" (func $f)))'],
-];
+  ['call_indirect inline sig',
+    '(module (table 1 funcref) (func $f (param i32) (result i32) local.get 0) (elem (i32.const 0) func $f) (func $c (param i32 i32) (result i32) local.get 0 local.get 1 call_indirect (param i32) (result i32)) (export "c" (func $c)))'],
+  ['call_indirect named table',
+    '(module (type $t (func (param i32) (result i32))) (table $tb 1 funcref) (func $f (param i32) (result i32) local.get 0) (elem (i32.const 0) func $f) (func $c (param i32 i32) (result i32) local.get 0 local.get 1 call_indirect $tb (type $t)) (export "c" (func $c)))'],
+  ['call_indirect no sig shorthand',
+    '(module (table 1 funcref) (func $f) (elem (i32.const 0) func $f) (func $c (param i32) local.get 0 call_indirect) (export "c" (func $c)))'],
+  ['return_call_indirect',
+    '(module (type $t (func (param i32) (result i32))) (table 1 funcref) (func $f (param i32) (result i32) local.get 0) (elem (i32.const 0) func $f) (func $c (param i32 i32) (result i32) local.get 0 local.get 1 return_call_indirect (type $t)) (export "c" (func $c)))'],  ['non-trapping conversion: i32.trunc_sat_f64_s',
+    '(module (func $f (param f64) (result i32) local.get 0 i32.trunc_sat_f64_s) (export \"f\" (func $f)))'],];
 
 let pass = 0;
 for (const [label, wat] of TESTS) {

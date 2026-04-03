@@ -1514,6 +1514,8 @@ function normalizeBulkTableShorthands(sourceWat) {
   out = out.replace(/\bmemory\.init\s+([^()\s]+)(?=\s*\))/g, 'memory.init $1 0');
   out = out.replace(/\bmemory\.init(?=\s*\))/g, 'memory.init 0 0');
   out = out.replace(/\bdata\.drop(?=\s*\))/g, 'data.drop 0');
+  // call_indirect / return_call_indirect with no typeuse: inject (type 0) so parser accepts.
+  out = out.replace(/\b(call_indirect|return_call_indirect)(?=\s*\))/g, '$1 (type 0)');
   return out;
 }
 
@@ -1523,7 +1525,7 @@ function normalizeBulkTableShorthands(sourceWat) {
 
 class WatAssembler {
   assemble(sourceWat) {
-    const normalizedWat = normalizeBulkTableShorthands(sourceWat);
+    const normalizedWat = normalizeBulkTableShorthands(sourceWat); // shorthands + no-sig call_indirect
     const p = new WATParser(normalizedWat);
     const tree = p.parse();
     const ctx = new ModuleContext(tree);
