@@ -973,6 +973,16 @@ function genElementSection(ctx) {
   return encodeSection(0x09, Buffer.concat(bufs));
 }
 
+function usesDataIndexOps(ctx) {
+  return ctx.funcDefs.some(fd => tAllTerminals(fd).some(t => t.text === 'memory.init' || t.text === 'data.drop'));
+}
+
+function genDataCountSection(ctx) {
+  if (!ctx.datas.length) return null;
+  if (!usesDataIndexOps(ctx)) return null;
+  return encodeSection(0x0c, encodeULEB128(ctx.datas.length));
+}
+
 function genCodeSection(ctx) {
   if (!ctx.funcDefs.length) return null;
   const bodies = ctx.funcDefs.map((fd, i) => emitFuncBody(fd, ctx, i));
@@ -1382,8 +1392,10 @@ function emitNonBlock(node, ctx, localCtx) {
   if (OPCODE_FC[op] !== undefined) {
     parts.push(Buffer.from([0xfc]), encodeULEB128(OPCODE_FC[op]));
     if (op === 'memory.init') {
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'dataidx'), ctx.dataIds)));
+      // Parser maps `memory.init a b` operands as memidx then dataidx.
+      // Binary encoding for 0xFC/8 is dataidx then memidx.
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'memidx'), ctx.memIds)));
+      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'dataidx'), ctx.dataIds)));
     } else if (op === 'data.drop') {
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'dataidx'), ctx.dataIds)));
     } else if (op === 'memory.copy') {
@@ -1514,6 +1526,7 @@ class WatAssembler {
       genExportSection(ctx),
       genStartSection(ctx),
       genElementSection(ctx),
+      genDataCountSection(ctx),
       genCodeSection(ctx),
       genDataSection(ctx),
       genTagSection(ctx),

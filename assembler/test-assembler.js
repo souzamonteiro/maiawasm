@@ -48,6 +48,18 @@ const TESTS = [
     '(module (type $f (func (param i32) (result i32))) (type $s (struct (field i32))) (type $a (array (field i8 (mut)))) (func (type $f) local.get 0))'],
   ['named block labels + br',
     '(module (func block $outer block $inner br $outer end end))'],
+  ['typed select (result i32)',
+    '(module (func $f (param i32 i32 i32) (result i32) local.get 0 local.get 1 local.get 2 select (result i32)) (export "f" (func $f)))'],
+  ['bulk memory: memory.copy + memory.fill',
+    '(module (memory 1) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.copy local.get 0 local.get 1 local.get 2 memory.fill) (export "ops" (func $ops)))'],
+  ['bulk memory: memory.init + data.drop',
+    '(module (memory 1) (data "a") (data "b") (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.init 1 0 data.drop 1) (export "ops" (func $ops)))'],
+  ['bulk memory: table.init + elem.drop with explicit indices',
+    '(module (table 2 funcref) (table 2 funcref) (func $f) (func $g) (elem (table 0) (offset (i32.const 0)) func $f) (elem (table 1) (offset (i32.const 0)) func $g) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 table.init 1 0 elem.drop 1) (export "ops" (func $ops)))'],
+  ['bulk memory: table.copy with explicit indices',
+    '(module (table 2 funcref) (table 2 funcref) (func $f) (elem (table 0) (offset (i32.const 0)) func $f) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 table.copy 0 1) (export "ops" (func $ops)))'],
+  ['non-trapping conversion: i32.trunc_sat_f64_s',
+    '(module (func $f (param f64) (result i32) local.get 0 i32.trunc_sat_f64_s) (export "f" (func $f)))'],
 ];
 
 let pass = 0;
