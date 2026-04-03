@@ -363,7 +363,10 @@ function parseNum(text) {
 class ModuleContext {
   constructor(tree) {
     this.tree = tree;
+    // Flattened subtype index space used by typeidx references.
     this.types = [];
+    // Concrete rectype entries as they appear in the type section.
+    this.typeEntries = [];
     this.funcs = [];
     this.tables = [];
     this.mems = [];
@@ -493,6 +496,46 @@ function parseSubtypeDesc(ctx, subtypeNode) {
   return desc;
 }
 
+function parseRectypeDesc(ctx, rectypeNode) {
+  if (!rectypeNode) {
+    const fallback = { kind: 'func', params: [], results: [] };
+    return { entry: { kind: 'single', subtype: fallback }, flat: [fallback] };
+  }
+
+  const hasRec = !!tFindFirst(rectypeNode, 'TOKEN_rec');
+  const subtypes = tChildrenOfType(rectypeNode, 'subtype').map(st => parseSubtypeDesc(ctx, st));
+
+  if (hasRec && subtypes.length > 0) {
+    return {
+      entry: { kind: 'rec', subtypes },
+      flat: subtypes,
+    };
+  }
+
+  if (subtypes.length > 0) {
+    return {
+      entry: { kind: 'single', subtype: subtypes[0] },
+      flat: [subtypes[0]],
+    };
+  }
+
+  const compTypes = tChildrenOfType(rectypeNode, 'comptype').map(parseCompTypeDesc);
+  if (compTypes.length > 0) {
+    return {
+      entry: { kind: 'single', subtype: compTypes[0] },
+      flat: [compTypes[0]],
+    };
+  }
+
+  const fallback = parseCompTypeDesc(rectypeNode);
+  return { entry: { kind: 'single', subtype: fallback }, flat: [fallback] };
+}
+
+function addSingleTypeEntry(ctx, subtypeDesc) {
+  ctx.types.push(subtypeDesc);
+  ctx.typeEntries.push({ kind: 'single', subtype: subtypeDesc });
+}
+
 function findOrAddFuncType(ctx, sig) {
   if (!sig || sig.kind !== 'func') sig = { kind: 'func', params: [], results: [] };
   const sigKey = JSON.stringify({ kind: 'func', params: sig.params || [], results: sig.results || [] });
@@ -502,7 +545,7 @@ function findOrAddFuncType(ctx, sig) {
   });
   if (idx !== -1) return idx;
   const newIdx = ctx.types.length;
-  ctx.types.push(sig);
+  addSingleTypeEntry(ctx, sig);
   return newIdx;
 }
 
@@ -523,24 +566,17 @@ function processTypeDef(ctx, node) {
   const name = tNameOf(node);
   if (name) ctx.typeIds.set(name, firstIdx);
 
-  // Parse explicit subtype wrappers first so we preserve final/supertypes metadata.
-  const subtypes = tFindAll(node, 'subtype');
-  if (subtypes.length > 0) {
-    for (const st of subtypes) ctx.types.push(parseSubtypeDesc(ctx, st));
-    return;
-  }
-
-  // A rectype may include one or more comptype entries (via subtypes in rec groups).
-  // Keep simple index-space behavior by appending each comptype in encounter order.
-  const compTypes = tFindAll(node, 'comptype');
-  if (compTypes.length > 0) {
-    for (const ct of compTypes) ctx.types.push(parseCompTypeDesc(ct));
+  const rectype = tChild(node, 'rectype');
+  if (rectype) {
+    const parsed = parseRectypeDesc(ctx, rectype);
+    ctx.typeEntries.push(parsed.entry);
+    for (const st of parsed.flat) ctx.types.push(st);
     return;
   }
 
   // Fallback for parsers that expose funcType directly.
   const funcType = tFindFirst(node, 'funcType');
-  ctx.types.push(parseFuncTypeSig(funcType));
+  addSingleTypeEntry(ctx, parseFuncTypeSig(funcType));
 }
 
 function processImportDef(ctx, node) {
@@ -676,39 +712,67 @@ function resolveExportsAndStart(ctx) {
 // ============================================================================
 
 function genTypeSection(ctx) {
-  if (!ctx.types.length) return null;
-  const bufs = [encodeULEB128(ctx.types.length)];
-  for (const t of ctx.types) {
-    if (!t || t.kind === 'func') {
-      const params = t && t.params ? t.params : [];
-      const results = t && t.results ? t.results : [];
-      bufs.push(Buffer.from([0x60]));
-      bufs.push(encodeULEB128(params.length));
-      for (const p of params) bufs.push(Buffer.from([ValTypeCode[p] || 0x7f]));
-      bufs.push(encodeULEB128(results.length));
-      for (const r of results) bufs.push(Buffer.from([ValTypeCode[r] || 0x7f]));
-      continue;
+  const entries = (ctx.typeEntries && ctx.typeEntries.length > 0)
+    ? ctx.typeEntries
+    : ctx.types.map(t => ({ kind: 'single', subtype: t }));
+  if (!entries.length) return null;
+
+  function emitCompType(desc) {
+    if (!desc || desc.kind === 'func') {
+      const params = desc && desc.params ? desc.params : [];
+      const results = desc && desc.results ? desc.results : [];
+      return Buffer.concat([
+        Buffer.from([0x60]),
+        encodeULEB128(params.length),
+        ...params.map(p => Buffer.from([ValTypeCode[p] || 0x7f])),
+        encodeULEB128(results.length),
+        ...results.map(r => Buffer.from([ValTypeCode[r] || 0x7f])),
+      ]);
     }
 
-    if (t.kind === 'struct') {
-      bufs.push(Buffer.from([0x5f]));
-      const fields = t.fields || [];
-      bufs.push(encodeULEB128(fields.length));
-      for (const f of fields) {
-        bufs.push(Buffer.from([f.storage.code]));
-        bufs.push(Buffer.from([f.mutable ? 1 : 0]));
-      }
-      continue;
+    if (desc.kind === 'struct') {
+      const fields = desc.fields || [];
+      return Buffer.concat([
+        Buffer.from([0x5f]),
+        encodeULEB128(fields.length),
+        ...fields.flatMap(f => [Buffer.from([f.storage.code]), Buffer.from([f.mutable ? 1 : 0])]),
+      ]);
     }
 
-    if (t.kind === 'array') {
-      bufs.push(Buffer.from([0x5e]));
-      const f = t.field || { storage: { code: 0x7f }, mutable: false };
-      bufs.push(Buffer.from([f.storage.code]));
-      bufs.push(Buffer.from([f.mutable ? 1 : 0]));
-      continue;
+    if (desc.kind === 'array') {
+      const f = desc.field || { storage: { code: 0x7f }, mutable: false };
+      return Buffer.concat([Buffer.from([0x5e, f.storage.code, f.mutable ? 1 : 0])]);
     }
+
+    return Buffer.concat([Buffer.from([0x60]), encodeULEB128(0), encodeULEB128(0)]);
   }
+
+  function emitSubtype(desc) {
+    const st = desc && desc.subtype ? desc.subtype : { isFinal: true, supertypes: [] };
+    const sups = Array.isArray(st.supertypes) ? st.supertypes : [];
+    const isFinal = st.isFinal !== false;
+    const comp = emitCompType(desc);
+
+    // Binary shorthand: subtype without supertypes that is final can be encoded as comptype.
+    if (isFinal && sups.length === 0) return comp;
+
+    const lead = Buffer.from([isFinal ? 0x4f : 0x50]);
+    const supVec = Buffer.concat([encodeULEB128(sups.length), ...sups.map(x => encodeULEB128(x))]);
+    return Buffer.concat([lead, supVec, comp]);
+  }
+
+  const bufs = [encodeULEB128(entries.length)];
+  for (const e of entries) {
+    if (e.kind === 'rec') {
+      const subs = e.subtypes || [];
+      bufs.push(Buffer.from([0x4e]));
+      bufs.push(encodeULEB128(subs.length));
+      for (const st of subs) bufs.push(emitSubtype(st));
+      continue;
+    }
+    bufs.push(emitSubtype(e.subtype));
+  }
+
   return encodeSection(0x01, Buffer.concat(bufs));
 }
 
