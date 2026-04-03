@@ -1,5 +1,7 @@
 # MaiaWASM
 
+![tREx](images/TheAssembler.png)
+
 WAT-to-WASM assembler in JavaScript, with a parser generated from EBNF grammar and a tREx-based pipeline (`maiacc` submodule).
 
 ## Overview
