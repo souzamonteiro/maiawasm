@@ -1026,10 +1026,12 @@ function getOpName(node) {
 function emitFolded(node, ctx, localCtx) {
   // (op nested-instrs...)  where nested instrs are evaluated before op
   const op = getOpName(node);
+  const texts = tAllTerminals(node).map(t => t.text);
   if (!op) return Buffer.alloc(0);
   if (op === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
   if (op === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
   if (op === 'if') return emitIf(node, ctx, localCtx);
+  if (op === 'try_table' || texts.includes('try_table')) return emitTryTable(node, ctx, localCtx);
   const parts = [];
   for (const si of tChildrenOfType(node, 'instr')) parts.push(emitInstrBuf(si, ctx, localCtx));
   const nb = tChild(node, 'nonBlockInstr');
@@ -1039,13 +1041,51 @@ function emitFolded(node, ctx, localCtx) {
 
 function emitSeq(node, ctx, localCtx) {
   const op = getOpName(node);
+  const texts = tAllTerminals(node).map(t => t.text);
   if (!op) return Buffer.alloc(0);
   if (op === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
   if (op === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
   if (op === 'if') return emitIf(node, ctx, localCtx);
+  if (op === 'try_table' || texts.includes('try_table')) return emitTryTable(node, ctx, localCtx);
   const nb = tChild(node, 'nonBlockInstr');
   if (nb) return emitNonBlock(nb, ctx, localCtx);
   return Buffer.alloc(0);
+}
+
+function emitTryTable(node, ctx, localCtx) {
+  // Exception handling try_table encoding:
+  // 0x1f blocktype vec(catch) instr* end
+  const bt = tChild(node, 'blockType');
+  const catches = tChildrenOfType(node, 'catchClause');
+  const bodyInstr = tChildrenOfType(node, 'instr');
+
+  const parts = [Buffer.from([0x1f]), emitBlockType(bt, ctx), encodeULEB128(catches.length)];
+
+  for (const cc of catches) {
+    const terms = tAllTerminals(cc).map(t => t.text);
+    const isCatchRef = terms.includes('catch_ref');
+    const isCatchAll = terms.includes('catch_all');
+    const isCatchAllRef = terms.includes('catch_all_ref');
+
+    if (isCatchAllRef) {
+      parts.push(Buffer.from([0x03]));
+      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+      continue;
+    }
+    if (isCatchAll) {
+      parts.push(Buffer.from([0x02]));
+      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+      continue;
+    }
+
+    parts.push(Buffer.from([isCatchRef ? 0x01 : 0x00]));
+    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'tagidx'), ctx.tagIds)));
+  }
+
+  for (const instr of bodyInstr) parts.push(emitInstrBuf(instr, ctx, localCtx));
+  parts.push(Buffer.from([0x0b]));
+  return Buffer.concat(parts);
 }
 
 function emitBlockType(btNode, ctx) {
