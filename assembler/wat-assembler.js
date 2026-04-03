@@ -481,10 +481,25 @@ function parseCompTypeDesc(compTypeNode) {
   return { kind: 'func', params: [], results: [] };
 }
 
+function parseSubtypeDesc(ctx, subtypeNode) {
+  const isFinal = !!tFindFirst(subtypeNode, 'TOKEN_final');
+  const supertypes = tChildrenOfType(subtypeNode, 'supertype').map((st) => {
+    const tu = tFindFirst(st, 'typeuse') || st;
+    return resolveTypeUse(ctx, tu);
+  });
+  const comp = tChild(subtypeNode, 'comptype');
+  const desc = comp ? parseCompTypeDesc(comp) : { kind: 'func', params: [], results: [] };
+  desc.subtype = { isFinal, supertypes };
+  return desc;
+}
+
 function findOrAddFuncType(ctx, sig) {
   if (!sig || sig.kind !== 'func') sig = { kind: 'func', params: [], results: [] };
-  const sigKey = JSON.stringify(sig);
-  const idx = ctx.types.findIndex(t => JSON.stringify(t) === sigKey);
+  const sigKey = JSON.stringify({ kind: 'func', params: sig.params || [], results: sig.results || [] });
+  const idx = ctx.types.findIndex(t => {
+    if (!t || t.kind !== 'func') return false;
+    return JSON.stringify({ kind: 'func', params: t.params || [], results: t.results || [] }) === sigKey;
+  });
   if (idx !== -1) return idx;
   const newIdx = ctx.types.length;
   ctx.types.push(sig);
@@ -492,7 +507,7 @@ function findOrAddFuncType(ctx, sig) {
 }
 
 function resolveTypeUse(ctx, tuNode) {
-  if (!tuNode) return findOrAddFuncType(ctx, { params: [], results: [] });
+  if (!tuNode) return findOrAddFuncType(ctx, { kind: 'func', params: [], results: [] });
   // Explicit (type $id/idx)
   const tidxNode = tChild(tuNode, 'typeidx');
   if (tidxNode) {
@@ -507,6 +522,13 @@ function processTypeDef(ctx, node) {
   const firstIdx = ctx.types.length;
   const name = tNameOf(node);
   if (name) ctx.typeIds.set(name, firstIdx);
+
+  // Parse explicit subtype wrappers first so we preserve final/supertypes metadata.
+  const subtypes = tFindAll(node, 'subtype');
+  if (subtypes.length > 0) {
+    for (const st of subtypes) ctx.types.push(parseSubtypeDesc(ctx, st));
+    return;
+  }
 
   // A rectype may include one or more comptype entries (via subtypes in rec groups).
   // Keep simple index-space behavior by appending each comptype in encounter order.
@@ -936,7 +958,7 @@ function buildLocalCtx(ctx, funcNode, defIndex) {
       for (const tt of typeTerms) { if (name) localMap.set(name, slot); localTypes.push(tt.text); slot++; }
     }
   }
-  return { localMap, localTypes, paramCount: sig.params.length };
+  return { localMap, localTypes, paramCount: sig.params.length, labelStack: [] };
 }
 
 function emitFuncBody(funcNode, ctx, defIndex) {
@@ -1026,29 +1048,35 @@ function getOpName(node) {
 function emitFolded(node, ctx, localCtx) {
   // (op nested-instrs...)  where nested instrs are evaluated before op
   const op = getOpName(node);
-  const texts = tAllTerminals(node).map(t => t.text);
-  if (!op) return Buffer.alloc(0);
-  if (op === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
-  if (op === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
-  if (op === 'if') return emitIf(node, ctx, localCtx);
-  if (op === 'try_table' || texts.includes('try_table')) return emitTryTable(node, ctx, localCtx);
+  const head = tChildren(node).find(c => c.text && c.text !== '(' && c.text !== ')');
+  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try_table')
+    ? head.text
+    : null;
+  if (ctl === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
+  if (ctl === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
+  if (ctl === 'if') return emitIf(node, ctx, localCtx);
+  if (ctl === 'try_table') return emitTryTable(node, ctx, localCtx);
   const parts = [];
   for (const si of tChildrenOfType(node, 'instr')) parts.push(emitInstrBuf(si, ctx, localCtx));
   const nb = tChild(node, 'nonBlockInstr');
   if (nb) parts.push(emitNonBlock(nb, ctx, localCtx));
+  if (!op && !nb && parts.length === 0) return Buffer.alloc(0);
   return Buffer.concat(parts);
 }
 
 function emitSeq(node, ctx, localCtx) {
   const op = getOpName(node);
-  const texts = tAllTerminals(node).map(t => t.text);
-  if (!op) return Buffer.alloc(0);
-  if (op === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
-  if (op === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
-  if (op === 'if') return emitIf(node, ctx, localCtx);
-  if (op === 'try_table' || texts.includes('try_table')) return emitTryTable(node, ctx, localCtx);
+  const head = tChildren(node).find(c => c.text && c.text !== '(' && c.text !== ')');
+  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try_table')
+    ? head.text
+    : null;
+  if (ctl === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
+  if (ctl === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
+  if (ctl === 'if') return emitIf(node, ctx, localCtx);
+  if (ctl === 'try_table') return emitTryTable(node, ctx, localCtx);
   const nb = tChild(node, 'nonBlockInstr');
   if (nb) return emitNonBlock(nb, ctx, localCtx);
+  if (!op) return Buffer.alloc(0);
   return Buffer.alloc(0);
 }
 
@@ -1058,6 +1086,7 @@ function emitTryTable(node, ctx, localCtx) {
   const bt = tChild(node, 'blockType');
   const catches = tChildrenOfType(node, 'catchClause');
   const bodyInstr = tChildrenOfType(node, 'instr');
+  const nestedCtx = withPushedLabel(localCtx, tNameOf(tChild(node, 'label')));
 
   const parts = [Buffer.from([0x1f]), emitBlockType(bt, ctx), encodeULEB128(catches.length)];
 
@@ -1069,21 +1098,21 @@ function emitTryTable(node, ctx, localCtx) {
 
     if (isCatchAllRef) {
       parts.push(Buffer.from([0x03]));
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
       continue;
     }
     if (isCatchAll) {
       parts.push(Buffer.from([0x02]));
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
       continue;
     }
 
     parts.push(Buffer.from([isCatchRef ? 0x01 : 0x00]));
-    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'label'), new Map())));
+    parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
     parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'tagidx'), ctx.tagIds)));
   }
 
-  for (const instr of bodyInstr) parts.push(emitInstrBuf(instr, ctx, localCtx));
+  for (const instr of bodyInstr) parts.push(emitInstrBuf(instr, ctx, nestedCtx));
   parts.push(Buffer.from([0x0b]));
   return Buffer.concat(parts);
 }
@@ -1105,7 +1134,8 @@ function emitBlockType(btNode, ctx) {
 function emitBlockLike(opcode, node, ctx, localCtx) {
   const bt = tChild(node, 'blockType');
   const parts = [Buffer.from([opcode]), emitBlockType(bt, ctx)];
-  for (const i of tChildrenOfType(node, 'instr')) parts.push(emitInstrBuf(i, ctx, localCtx));
+  const nestedCtx = withPushedLabel(localCtx, tNameOf(tChild(node, 'label')));
+  for (const i of tChildrenOfType(node, 'instr')) parts.push(emitInstrBuf(i, ctx, nestedCtx));
   parts.push(Buffer.from([0x0b]));
   return Buffer.concat(parts);
 }
@@ -1113,22 +1143,28 @@ function emitBlockLike(opcode, node, ctx, localCtx) {
 function emitIf(node, ctx, localCtx) {
   const bt = tChild(node, 'blockType');
   const parts = [Buffer.from([0x04]), emitBlockType(bt, ctx)];
+  const nestedCtx = withPushedLabel(localCtx, tNameOf(tChild(node, 'label')));
   const thenNode = tChildrenOfType(node, 'ifThen', 'thenBlock')[0];
   const elseNode = tChildrenOfType(node, 'ifElse', 'elseBlock')[0];
   if (thenNode) {
-    for (const i of tChildrenOfType(thenNode, 'instr')) parts.push(emitInstrBuf(i, ctx, localCtx));
+    for (const i of tChildrenOfType(thenNode, 'instr')) parts.push(emitInstrBuf(i, ctx, nestedCtx));
     if (elseNode) {
       parts.push(Buffer.from([0x05]));
-      for (const i of tChildrenOfType(elseNode, 'instr')) parts.push(emitInstrBuf(i, ctx, localCtx));
+      for (const i of tChildrenOfType(elseNode, 'instr')) parts.push(emitInstrBuf(i, ctx, nestedCtx));
     }
   } else {
-    // Flat: all instrs in the if node; split at 'else' keyword
-    const instrs = tChildrenOfType(node, 'instr');
+    // Flat sequential form: children contain TOKEN_else directly between instr nodes.
+    const direct = tChildren(node);
     let foundElse = false;
-    for (const instr of instrs) {
-      const ts = tAllTerminals(instr).map(t => t.text);
-      if (ts.includes('else') && !foundElse) { parts.push(Buffer.from([0x05])); foundElse = true; continue; }
-      parts.push(emitInstrBuf(instr, ctx, localCtx));
+    for (const child of direct) {
+      if (child.text === 'else' && !foundElse) {
+        parts.push(Buffer.from([0x05]));
+        foundElse = true;
+        continue;
+      }
+      if (child.type === 'instr') {
+        parts.push(emitInstrBuf(child, ctx, nestedCtx));
+      }
     }
   }
   parts.push(Buffer.from([0x0b]));
@@ -1170,6 +1206,27 @@ function resolveLocal(node, localCtx) {
   return 0;
 }
 
+function withPushedLabel(localCtx, labelName) {
+  const base = localCtx || { localMap: new Map(), localTypes: [], paramCount: 0, labelStack: [] };
+  return {
+    ...base,
+    labelStack: [labelName || null, ...(base.labelStack || [])],
+  };
+}
+
+function resolveLabelIdx(node, localCtx) {
+  if (!node) return 0;
+  const terms = tAllTerminals(node);
+  const idTerm = terms.find(t => t.text && t.text.startsWith('$'));
+  if (idTerm && localCtx && Array.isArray(localCtx.labelStack)) {
+    const idx = localCtx.labelStack.findIndex(x => x === idTerm.text);
+    if (idx !== -1) return idx;
+  }
+  const natTerm = terms.find(t => t.type === 'nat' || (t.text && /^\d+$/.test(t.text)));
+  if (natTerm) return parseInt(natTerm.text, 10);
+  return 0;
+}
+
 function getIdMap(indexType, ctx) {
   return { typeidx: ctx.typeIds, funcidx: ctx.funcIds, tableidx: ctx.tableIds,
            memidx: ctx.memIds, globalidx: ctx.globalIds, tagidx: ctx.tagIds,
@@ -1199,7 +1256,7 @@ function emitNonBlock(node, ctx, localCtx) {
       parts.push(Buffer.from([nullable ? 0x01 : 0x00]));
       parts.push(emitHeapType(rt || node));
     } else if (op === 'br_on_cast' || op === 'br_on_cast_fail') {
-      const labelIdx = tResolveIdxNode(tFindFirst(node, 'labelidx'), new Map());
+      const labelIdx = resolveLabelIdx(tFindFirst(node, 'labelidx'), localCtx);
       parts.push(encodeULEB128(labelIdx));
       const rts = tChildrenOfType(node, 'reftype');
       const flags = (rts[0] && tAllTerminals(rts[0]).some(t => t.text === 'null') ? 1 : 0)
@@ -1332,12 +1389,12 @@ function emitNonBlock(node, ctx, localCtx) {
     parts.push(encodeULEB128(resolveTypeUse(ctx, tu)));
     parts.push(encodeULEB128(tResolveIdxNode(tbl, ctx.tableIds)));
   } else if (op === 'br' || op === 'br_if' || op === 'br_on_null' || op === 'br_on_non_null') {
-    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'labelidx') || tFindFirst(node, 'index'), new Map())));
+    parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(node, 'labelidx') || tFindFirst(node, 'index'), localCtx)));
   } else if (op === 'br_table') {
     const labels = tChildrenOfType(node, 'labelidx');
     if (labels.length > 0) {
       parts.push(encodeULEB128(labels.length - 1));
-      for (const l of labels) parts.push(encodeULEB128(tResolveIdxNode(l, new Map())));
+      for (const l of labels) parts.push(encodeULEB128(resolveLabelIdx(l, localCtx)));
     } else {
       // fallback: raw nat values
       const natTerms = terms.filter(t => t.type === 'nat');
@@ -1347,7 +1404,7 @@ function emitNonBlock(node, ctx, localCtx) {
   } else if (op === 'throw') {
     parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'tagidx'), ctx.tagIds)));
   } else if (op === 'rethrow') {
-    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'labelidx') || tFindFirst(node, 'index'), new Map())));
+    parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(node, 'labelidx') || tFindFirst(node, 'index'), localCtx)));
   } else if (op === 'ref.null') {
     parts.push(emitHeapType(tChild(node, 'heaptype') || node));
   } else if (op === 'ref.func') {

@@ -46,6 +46,8 @@ const TESTS = [
     '(module (type $a (array (field i8 (mut)))))'],
   ['func + struct + array mixed types',
     '(module (type $f (func (param i32) (result i32))) (type $s (struct (field i32))) (type $a (array (field i8 (mut)))) (func (type $f) local.get 0))'],
+  ['named block labels + br',
+    '(module (func block $outer block $inner br $outer end end))'],
 ];
 
 let pass = 0;
