@@ -40,6 +40,12 @@ const TESTS = [
     '(module (table 1 funcref) (elem funcref (item (ref.null func))))'],
   ['tag local definition',
     '(module (type $t (func)) (tag $e (type $t)))'],
+  ['struct type definition',
+    '(module (type $s (struct (field i32) (field i16 (mut)))))'],
+  ['array type definition',
+    '(module (type $a (array (field i8 (mut)))))'],
+  ['func + struct + array mixed types',
+    '(module (type $f (func (param i32) (result i32))) (type $s (struct (field i32))) (type $a (array (field i8 (mut)))) (func (type $f) local.get 0))'],
 ];
 
 let pass = 0;

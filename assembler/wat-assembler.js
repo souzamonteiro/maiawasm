@@ -69,6 +69,11 @@ const ValTypeCode = {
   funcref: 0x70, externref: 0x6f, exnref: 0x69,
 };
 
+const PackedTypeCode = {
+  i8: 0x78,
+  i16: 0x77,
+};
+
 const HeapTypeCode = {
   func: 0x70, extern: 0x6f, exn: 0x68, any: 0x6e, eq: 0x6d,
   i31: 0x6c, struct: 0x6b, array: 0x6a, none: 0x71, nofunc: 0x73,
@@ -289,6 +294,13 @@ function tFindFirst(node, type) {
   return null;
 }
 
+function tFindAll(node, type, out = []) {
+  if (!node) return out;
+  if (node.type === type) out.push(node);
+  for (const c of tChildren(node)) tFindAll(c, type, out);
+  return out;
+}
+
 function tNameOf(node) {
   const idNode = tChild(node, 'id');
   if (!idNode) return null;
@@ -418,7 +430,7 @@ function parseValueType(vtNode) {
 }
 
 function parseFuncTypeSig(funcTypeNode) {
-  if (!funcTypeNode) return { params: [], results: [] };
+  if (!funcTypeNode) return { kind: 'func', params: [], results: [] };
   const params = [];
   const results = [];
   for (const pd of tChildrenOfType(funcTypeNode, 'paramDecl')) {
@@ -427,10 +439,50 @@ function parseFuncTypeSig(funcTypeNode) {
   for (const rd of tChildrenOfType(funcTypeNode, 'resultDecl')) {
     for (const vt of tChildrenOfType(rd, 'valueType')) results.push(parseValueType(vt));
   }
-  return { params, results };
+  return { kind: 'func', params, results };
+}
+
+function parseStorageType(stNode) {
+  const pt = tFindFirst(stNode, 'packType');
+  if (pt) {
+    const terms = tAllTerminals(pt).map(t => t.text);
+    if (terms.includes('i8')) return { kind: 'packed', code: PackedTypeCode.i8 };
+    if (terms.includes('i16')) return { kind: 'packed', code: PackedTypeCode.i16 };
+  }
+  const vt = tFindFirst(stNode, 'valueType');
+  if (vt) return { kind: 'val', code: ValTypeCode[parseValueType(vt)] || 0x7f };
+  return { kind: 'val', code: 0x7f };
+}
+
+function parseFieldType(fieldDeclNode) {
+  const st = tChild(fieldDeclNode, 'storagetype');
+  const storage = parseStorageType(st);
+  const mut = !!tFindFirst(fieldDeclNode, 'mutField');
+  return { storage, mutable: mut };
+}
+
+function parseCompTypeDesc(compTypeNode) {
+  const ft = tChild(compTypeNode, 'funcType');
+  if (ft) return parseFuncTypeSig(ft);
+
+  const st = tChild(compTypeNode, 'structType');
+  if (st) {
+    const fields = tChildrenOfType(st, 'fieldDecl').map(parseFieldType);
+    return { kind: 'struct', fields };
+  }
+
+  const at = tChild(compTypeNode, 'arrayType');
+  if (at) {
+    const fd = tChild(at, 'fieldDecl');
+    const field = fd ? parseFieldType(fd) : { storage: { kind: 'val', code: 0x7f }, mutable: false };
+    return { kind: 'array', field };
+  }
+
+  return { kind: 'func', params: [], results: [] };
 }
 
 function findOrAddFuncType(ctx, sig) {
+  if (!sig || sig.kind !== 'func') sig = { kind: 'func', params: [], results: [] };
   const sigKey = JSON.stringify(sig);
   const idx = ctx.types.findIndex(t => JSON.stringify(t) === sigKey);
   if (idx !== -1) return idx;
@@ -456,15 +508,15 @@ function processTypeDef(ctx, node) {
   const name = tNameOf(node);
   if (name) ctx.typeIds.set(name, firstIdx);
 
-  // A rectype may contain multiple subtypes/comptypes; collect all function
-  // type occurrences so recursive groups with several functypes can be indexed.
-  const funcTypes = tChildrenOfType(node, 'funcType');
-  if (funcTypes.length > 0) {
-    for (const ft of funcTypes) ctx.types.push(parseFuncTypeSig(ft));
+  // A rectype may include one or more comptype entries (via subtypes in rec groups).
+  // Keep simple index-space behavior by appending each comptype in encounter order.
+  const compTypes = tFindAll(node, 'comptype');
+  if (compTypes.length > 0) {
+    for (const ct of compTypes) ctx.types.push(parseCompTypeDesc(ct));
     return;
   }
 
-  // Backward-compatible fallback: if parser shape differs, keep old behavior.
+  // Fallback for parsers that expose funcType directly.
   const funcType = tFindFirst(node, 'funcType');
   ctx.types.push(parseFuncTypeSig(funcType));
 }
@@ -605,11 +657,35 @@ function genTypeSection(ctx) {
   if (!ctx.types.length) return null;
   const bufs = [encodeULEB128(ctx.types.length)];
   for (const t of ctx.types) {
-    bufs.push(Buffer.from([0x60]));
-    bufs.push(encodeULEB128(t.params.length));
-    for (const p of t.params) bufs.push(Buffer.from([ValTypeCode[p] || 0x7f]));
-    bufs.push(encodeULEB128(t.results.length));
-    for (const r of t.results) bufs.push(Buffer.from([ValTypeCode[r] || 0x7f]));
+    if (!t || t.kind === 'func') {
+      const params = t && t.params ? t.params : [];
+      const results = t && t.results ? t.results : [];
+      bufs.push(Buffer.from([0x60]));
+      bufs.push(encodeULEB128(params.length));
+      for (const p of params) bufs.push(Buffer.from([ValTypeCode[p] || 0x7f]));
+      bufs.push(encodeULEB128(results.length));
+      for (const r of results) bufs.push(Buffer.from([ValTypeCode[r] || 0x7f]));
+      continue;
+    }
+
+    if (t.kind === 'struct') {
+      bufs.push(Buffer.from([0x5f]));
+      const fields = t.fields || [];
+      bufs.push(encodeULEB128(fields.length));
+      for (const f of fields) {
+        bufs.push(Buffer.from([f.storage.code]));
+        bufs.push(Buffer.from([f.mutable ? 1 : 0]));
+      }
+      continue;
+    }
+
+    if (t.kind === 'array') {
+      bufs.push(Buffer.from([0x5e]));
+      const f = t.field || { storage: { code: 0x7f }, mutable: false };
+      bufs.push(Buffer.from([f.storage.code]));
+      bufs.push(Buffer.from([f.mutable ? 1 : 0]));
+      continue;
+    }
   }
   return encodeSection(0x01, Buffer.concat(bufs));
 }
