@@ -23,6 +23,9 @@ This test suite validates the WebAssembly Text Format assembler.
 # Run all tests
 npm test
 
+# Run disassembler suite (includes external wabt validation when available)
+node tests/run-disassembler-tests.js
+
 # Generate expected outputs (requires wabt)
 npm run test:generate
 
@@ -31,3 +34,4 @@ npm run test:clean
 
 # Run all steps (clean, generate, test)
 npm run test:all
+```

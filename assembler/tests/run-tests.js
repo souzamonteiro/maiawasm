@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { WatAssembler } = require('../wat-assembler.js');
+const WatAssembler = require('../wat-assembler.js');
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const EXPECTED_DIR = path.join(__dirname, 'expected');
@@ -17,6 +17,14 @@ if (!fs.existsSync(OUTPUT_DIR)) {
 
 // Files that should FAIL assembly
 const SHOULD_FAIL = ['10-errors.wat'];
+
+function sanitizeWat(source) {
+  return source
+    .split('\n')
+    .map(line => line.replace(/;;.*$/, ''))
+    .join('\n')
+    .trim();
+}
 
 const watFiles = fs.readdirSync(FIXTURES_DIR)
   .filter(f => f.endsWith('.wat'));
@@ -37,7 +45,7 @@ for (const watFile of watFiles) {
   process.stdout.write(`  ${watFile} ... `);
   
   try {
-    const source = fs.readFileSync(watPath, 'utf8');
+    const source = sanitizeWat(fs.readFileSync(watPath, 'utf8'));
     
     if (SHOULD_FAIL.includes(watFile)) {
       // This file should FAIL

@@ -60,6 +60,32 @@ Optional validation (if `wabt` is installed):
 wasm-validate test.wasm
 ```
 
+## CLI Scripts (Run From Anywhere)
+
+The repository includes shell wrappers in `bin/` that resolve internal paths automatically,
+so they can be called from any current directory.
+
+```bash
+# WAT -> WASM
+/absolute/path/to/maiawasm/bin/wat2wasm.sh input.wat output.wasm
+
+# WASM -> WAT
+/absolute/path/to/maiawasm/bin/wasm2wat.sh input.wasm output.wat
+
+# Roundtrip: WAT -> WASM -> WAT -> WASM (+ validation)
+/absolute/path/to/maiawasm/bin/roundtrip.sh input.wat [output-dir]
+```
+
+If output is omitted, the script writes alongside the input file using the matching extension.
+
+Examples:
+
+```bash
+/absolute/path/to/maiawasm/bin/wat2wasm.sh ./module.wat
+/absolute/path/to/maiawasm/bin/wasm2wat.sh ./module.wasm
+/absolute/path/to/maiawasm/bin/roundtrip.sh ./module.wat
+```
+
 ## Testes
 
 Main assembler suite:

@@ -1216,8 +1216,47 @@ function emitBlockLike(opcode, node, ctx, localCtx) {
 
 function emitIf(node, ctx, localCtx) {
   const bt = tChild(node, 'blockType');
-  const parts = [Buffer.from([0x04]), emitBlockType(bt, ctx)];
   const nestedCtx = withPushedLabel(localCtx, tNameOf(tChild(node, 'label')));
+  const direct = tChildren(node);
+
+  // Folded if form: (if (result ..) (cond...) (then ...) (else ...))
+  // Condition instructions must be emitted BEFORE opcode 0x04.
+  const thenPos = direct.findIndex(c => c && c.text === 'then');
+  if (thenPos !== -1) {
+    const parts = [];
+    for (let i = 0; i < thenPos; i++) {
+      const child = direct[i];
+      if (child && child.type === 'instr') {
+        parts.push(emitInstrBuf(child, ctx, nestedCtx));
+      }
+    }
+
+    parts.push(Buffer.from([0x04]), emitBlockType(bt, ctx));
+
+    let hasElse = false;
+    for (let i = thenPos + 1; i < direct.length; i++) {
+      const child = direct[i];
+      if (!child) continue;
+      if (child.text === 'else') {
+        parts.push(Buffer.from([0x05]));
+        hasElse = true;
+        continue;
+      }
+      if (child.type === 'instr') {
+        parts.push(emitInstrBuf(child, ctx, nestedCtx));
+      }
+    }
+
+    // If folded form has no else marker, keep binary as if-without-else.
+    if (!hasElse) {
+      // no-op
+    }
+
+    parts.push(Buffer.from([0x0b]));
+    return Buffer.concat(parts);
+  }
+
+  const parts = [Buffer.from([0x04]), emitBlockType(bt, ctx)];
   const thenNode = tChildrenOfType(node, 'ifThen', 'thenBlock')[0];
   const elseNode = tChildrenOfType(node, 'ifElse', 'elseBlock')[0];
   if (thenNode) {
@@ -1515,7 +1554,25 @@ function normalizeBulkTableShorthands(sourceWat) {
   out = out.replace(/\bmemory\.init(?=\s*\))/g, 'memory.init 0 0');
   out = out.replace(/\bdata\.drop(?=\s*\))/g, 'data.drop 0');
   // call_indirect / return_call_indirect with no typeuse: inject (type 0) so parser accepts.
-  out = out.replace(/\b(call_indirect|return_call_indirect)(?=\s*\))/g, '$1 (type 0)');
+  out = out.replace(/(^|[\s(])(call_indirect|return_call_indirect)(?=\s*\))/gm, '$1$2 (type 0)');
+  return out;
+}
+
+function normalizeSignedConstImmediates(sourceWat) {
+  let out = sourceWat;
+
+  // Accept signed integer literals in i32.const while keeping exact i32 bits.
+  out = out.replace(/\bi32\.const\s+-(\d+)\b/g, (_, n) => {
+    const wrapped = (0x100000000n - BigInt(n)) & 0xffffffffn;
+    return `i32.const ${wrapped.toString()}`;
+  });
+
+  // Accept signed integer literals in i64.const with equivalent stack semantics.
+  // Current parser rejects signed integer immediate tokens in this form.
+  out = out.replace(/\bi64\.const\s+-(\d+)\b/g, (_, n) => {
+    return `i64.const 0 i64.const ${n} i64.sub`;
+  });
+
   return out;
 }
 
@@ -1525,7 +1582,9 @@ function normalizeBulkTableShorthands(sourceWat) {
 
 class WatAssembler {
   assemble(sourceWat) {
-    const normalizedWat = normalizeBulkTableShorthands(sourceWat); // shorthands + no-sig call_indirect
+    const normalizedWat = normalizeSignedConstImmediates(
+      normalizeBulkTableShorthands(sourceWat)
+    ); // shorthands + no-sig call_indirect + signed integer const compatibility
     const p = new WATParser(normalizedWat);
     const tree = p.parse();
     const ctx = new ModuleContext(tree);
