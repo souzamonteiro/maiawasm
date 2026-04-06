@@ -1,5 +1,12 @@
 # WASM Disassembler TODO
 
+## Status update (2026-04-06)
+
+- [x] Synced parser-generator refactor from MaiaCC into `maiawasm/maiacc` (generation snippets moved to templates).
+- [x] Rebuilt `assembler/wat-parser.js` using the canonical flow from `grammar/WAT.ebnf`.
+- [x] Ran assembler test suite after sync/regeneration: `10 passed, 0 failed`.
+- [ ] Keep conformance expansion and byte-equality improvements open (hash mismatch is still acceptable today when wasm is valid).
+
 ## Critical (required to run reliably)
 
 - [x] Implement all section parsers currently referenced but missing:

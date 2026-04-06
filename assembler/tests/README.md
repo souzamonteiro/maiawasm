@@ -23,6 +23,9 @@ This test suite validates the WebAssembly Text Format assembler.
 # Run all tests
 npm test
 
+# Run assembler tests in strict hash mode (byte-identical snapshots)
+node tests/run-tests.js --strict-hash
+
 # Run disassembler suite (includes external wabt validation when available)
 node tests/run-disassembler-tests.js
 

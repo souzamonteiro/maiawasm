@@ -11,6 +11,9 @@ const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const EXPECTED_DIR = path.join(__dirname, 'expected');
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 
+const args = new Set(process.argv.slice(2));
+const STRICT_HASH = args.has('--strict-hash') || args.has('--strict') || process.env.STRICT_HASH === '1';
+
 if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
@@ -30,6 +33,9 @@ const watFiles = fs.readdirSync(FIXTURES_DIR)
   .filter(f => f.endsWith('.wat'));
 
 console.log('Running tests...\n');
+if (STRICT_HASH) {
+  console.log('Mode: STRICT_HASH enabled (hash mismatch is a failure)\n');
+}
 
 const assembler = new WatAssembler();
 let passed = 0;
@@ -87,7 +93,11 @@ for (const watFile of watFiles) {
           console.log('✓ PASSED');
           passed++;
         } else {
-          if (isValidWasm) {
+          if (STRICT_HASH) {
+            console.log('❌ FAILED (strict hash mismatch)');
+            console.log(`    Expected: ${expectedHash}, Got: ${actualHash}`);
+            failed++;
+          } else if (isValidWasm) {
             console.log('✓ PASSED (valid wasm, hash mismatch)');
             console.log(`    Expected: ${expectedHash}, Got: ${actualHash}`);
             passed++;
