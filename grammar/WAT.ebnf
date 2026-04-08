@@ -126,8 +126,8 @@ nonBlockInstr     ::= 'nop'
                     | 'throw_ref'
                     | 'select' resultTypes?
                     | simdLikeInstr
-                    | memLikeInstr
                     | numericLikeInstr
+                    | memLikeInstr
                     | 'local.get' index
                     | 'local.set' index
                     | 'local.tee' index
@@ -309,11 +309,12 @@ integer           ::= '-' digit+
 nat               ::= digit+
 digit             ::= [0-9]
 
-float             ::= sign? digit+ ( '.' digit+ )? ( ( 'e' | 'E' ) sign? digit+ )?
+float             ::= sign? digit+ ( '.' digit+ ) ( ( 'e' | 'E' ) sign? digit+ )?
+                    | sign? digit+ ( ( 'e' | 'E' ) sign? digit+ )
                     | sign? '0x' hexdigit+ ( '.' hexdigit+ )? ( ( 'p' | 'P' ) sign? digit+ )?
                     | sign? 'inf'
                     | sign? 'nan' ( ':' '0x' hexdigit+ )?
-nat << float
+
 sign              ::= '+' | '-'
 hexdigit          ::= [0-9A-Fa-f]
 
