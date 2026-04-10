@@ -1,14 +1,52 @@
 {
-  "name": "wat-assembler-tests",
+  "name": "maiawasm",
   "version": "1.0.0",
-  "description": "Test suite for WAT assembler",
+  "description": "MaiaWASM: WAT-to-WASM assembler with EBNF-generated parser.",
+  "license": "Apache-2.0",
+  "main": "assembler/wat-assembler.js",
+  "bin": {
+    "wat2wasm": "bin/wat2wasm.sh",
+    "wasm2wat": "bin/wasm2wat.sh",
+    "wat-roundtrip": "bin/roundtrip.sh"
+  },
+  "files": [
+    "assembler/wat-assembler.js",
+    "assembler/wat-parser.js",
+    "assembler/wat-parser-adapter.js",
+    "assembler/wasm-disassembler.js",
+    "bin/wat2wasm.sh",
+    "bin/wasm2wat.sh",
+    "bin/roundtrip.sh",
+    "grammar/WAT.ebnf",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "test": "node tests/run-tests.js",
-    "test:watch": "nodemon --watch tests/fixtures --watch tests/expected --watch wat-assembler.js --exec 'npm test'",
-    "test:generate": "node tests/generate-expected.js",
-    "test:clean": "rm -rf tests/outputs/*",
-    "test:validate": "for f in tests/outputs/*.wasm; do wasm-validate $f; done",
-    "test:all": "npm run test:clean && npm run test:generate && npm run test"
+    "test": "node assembler/tests/run-tests.js",
+    "test:assembler": "node assembler/test-assembler.js",
+    "test:proposals": "node assembler/test-assembler-proposals.js",
+    "build:parser": "bash ./maiacc/bin/tREx.sh --ebnf --to-xml assembler/_wat-grammar.xml ./grammar/WAT.ebnf ./assembler/wat-parser.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/souzamonteiro/maiawasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/souzamonteiro/maiawasm/issues"
+  },
+  "homepage": "https://github.com/souzamonteiro/maiawasm#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "wasm",
+    "wat",
+    "webassembly",
+    "assembler",
+    "disassembler"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
