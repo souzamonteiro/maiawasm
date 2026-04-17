@@ -74,6 +74,9 @@ so they can be called from any current directory.
 
 # Roundtrip: WAT -> WASM -> WAT -> WASM (+ validation)
 /absolute/path/to/maiawasm/bin/roundtrip.sh input.wat [output-dir]
+
+# Link plan + JS loader generation for multiple WASM modules
+/absolute/path/to/maiawasm/bin/wasm-link.sh moduleA.wasm moduleB.wasm [options]
 ```
 
 If output is omitted, the script writes alongside the input file using the matching extension.
@@ -84,6 +87,20 @@ Examples:
 /absolute/path/to/maiawasm/bin/wat2wasm.sh ./module.wat
 /absolute/path/to/maiawasm/bin/wasm2wat.sh ./module.wasm
 /absolute/path/to/maiawasm/bin/roundtrip.sh ./module.wat
+/absolute/path/to/maiawasm/bin/wasm-link.sh ./app.wasm ./libmath.wasm -o ./linked-loader.js
+```
+
+Useful options for `wasm-link.sh`:
+
+```bash
+# Fails if there are unresolved imports
+/absolute/path/to/maiawasm/bin/wasm-link.sh ./app.wasm ./libmath.wasm --strict
+
+# Validates disassembler -> assembler roundtrip during analysis
+/absolute/path/to/maiawasm/bin/wasm-link.sh ./app.wasm ./libmath.wasm --validate-roundtrip
+
+# Static link (partial: functions + local/imported memory/table/global + elem/data segments) to a single WASM
+/absolute/path/to/maiawasm/bin/wasm-link.sh ./app.wasm ./libmath.wasm --static --wasm-output ./linked.wasm -e app
 ```
 
 ## Testes
@@ -104,6 +121,12 @@ Internal fixtures suite:
 
 ```bash
 node assembler/tests/run-tests.js
+```
+
+Static linker regression matrix (local sections + available multi-module fixtures):
+
+```bash
+npm run test:linker:static
 ```
 
 ## Regenerating the WAT Parser (Canonical Flow)

@@ -7,16 +7,19 @@
   "bin": {
     "wat2wasm": "bin/wat2wasm.sh",
     "wasm2wat": "bin/wasm2wat.sh",
-    "wat-roundtrip": "bin/roundtrip.sh"
+    "wat-roundtrip": "bin/roundtrip.sh",
+    "wasm-link": "bin/wasm-link.sh"
   },
   "files": [
     "assembler/wat-assembler.js",
     "assembler/wat-parser.js",
     "assembler/wat-parser-adapter.js",
     "assembler/wasm-disassembler.js",
+    "assembler/wasm-linker.js",
     "bin/wat2wasm.sh",
     "bin/wasm2wat.sh",
     "bin/roundtrip.sh",
+    "bin/wasm-link.sh",
     "grammar/WAT.ebnf",
     "LICENSE",
     "README.md"
@@ -25,6 +28,7 @@
     "test": "node assembler/tests/run-tests.js",
     "test:assembler": "node assembler/test-assembler.js",
     "test:proposals": "node assembler/test-assembler-proposals.js",
+    "test:linker:static": "bash ./assembler/tests/run-static-linker-regression.sh",
     "build:parser": "bash ./maiacc/bin/tREx.sh --ebnf --to-xml assembler/_wat-grammar.xml ./grammar/WAT.ebnf ./assembler/wat-parser.js"
   },
   "repository": {
