@@ -397,11 +397,23 @@ class ModuleContext {
 function buildSymbolTables(ctx) {
   const moduleNode = tFindFirst(ctx.tree, 'module');
   if (!moduleNode) throw new Error('No module node in parse tree');
-  for (const mf of tChildrenOfType(moduleNode, 'moduleField')) {
+  const moduleFields = tChildrenOfType(moduleNode, 'moduleField');
+
+  // Pass 1: explicit type definitions establish canonical typeidx numbering.
+  // This keeps `(type N)` references stable even when imports use inline
+  // signatures before the explicit type declarations in source order.
+  for (const mf of moduleFields) {
     const inner = tChildren(mf)[0];
     if (!inner) continue;
     if (inner.type === 'typeDef') processTypeDef(ctx, inner);
-    else if (inner.type === 'importDef') processImportDef(ctx, inner);
+  }
+
+  // Pass 2: all remaining module fields.
+  for (const mf of moduleFields) {
+    const inner = tChildren(mf)[0];
+    if (!inner) continue;
+    if (inner.type === 'typeDef') continue;
+    if (inner.type === 'importDef') processImportDef(ctx, inner);
     else if (inner.type === 'funcDef') processFuncDef(ctx, inner);
     else if (inner.type === 'globalDef') processGlobalDef(ctx, inner);
     else if (inner.type === 'memDef') processMemDef(ctx, inner);
@@ -485,7 +497,11 @@ function parseCompTypeDesc(compTypeNode) {
 }
 
 function parseSubtypeDesc(ctx, subtypeNode) {
-  const isFinal = !!tFindFirst(subtypeNode, 'TOKEN_final');
+  const hasSub = !!tFindFirst(subtypeNode, 'TOKEN_sub');
+  const hasFinal = !!tFindFirst(subtypeNode, 'TOKEN_final');
+  // Plain `(type (func ...))` parses through `subtype -> comptype` without
+  // an explicit `sub` keyword and should use the compact final encoding.
+  const isFinal = hasSub ? hasFinal : true;
   const supertypes = tChildrenOfType(subtypeNode, 'supertype').map((st) => {
     const tu = tFindFirst(st, 'typeuse') || st;
     return resolveTypeUse(ctx, tu);
