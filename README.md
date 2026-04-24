@@ -4,6 +4,12 @@
 
 WAT-to-WASM assembler in JavaScript, with a parser generated from EBNF grammar and a tREx-based pipeline (`maiacc` submodule).
 
+## Process Documentation
+
+Mandatory cross-repository synchronization workflow:
+
+- [docs/Maia_Ecosystem_Synchronization_Protocol.md](docs/Maia_Ecosystem_Synchronization_Protocol.md)
+
 ## Overview
 
 This repository provides:
