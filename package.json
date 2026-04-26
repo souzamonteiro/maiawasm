@@ -1,6 +1,6 @@
 {
   "name": "maiawasm",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "MaiaWASM: WAT-to-WASM assembler with EBNF-generated parser.",
   "license": "Apache-2.0",
   "main": "assembler/wat-assembler.js",
