@@ -67,7 +67,7 @@ class WATParser {
     this.input = input;
   }
 
-  parse() {
+  parse(inputLabel = 'WAT input') {
     const collector = new ParseTreeCollector();
     const parser = new OriginalParser(this.input, collector);
 
@@ -76,9 +76,59 @@ class WATParser {
       if (!collector.root) throw new Error('Parser produced no tree');
       return collector.root;
     } catch (err) {
-      throw new Error(`WAT parse failed: ${err.message}`);
+      const message = err && err.message ? err.message : String(err);
+      const offset = extractOffsetFromError(err, parser);
+      if (offset === null || this.input.length === 0) {
+        throw new Error(`Parse failed for ${inputLabel}: ${message}`);
+      }
+
+      const loc = offsetToLineColumn(this.input, offset);
+      throw new Error(
+        `Parse failed for ${inputLabel}: ${message} at line ${loc.line}, column ${loc.column} (offset ${loc.offset})`
+      );
     }
   }
+}
+
+function offsetToLineColumn(text, offset) {
+  const safeOffset = Math.max(0, Math.min(Number(offset) || 0, text.length));
+  let line = 1;
+  let column = 1;
+
+  for (let i = 0; i < safeOffset; i++) {
+    const ch = text[i];
+    if (ch === '\r') {
+      if (text[i + 1] === '\n') {
+        i++;
+      }
+      line++;
+      column = 1;
+    } else if (ch === '\n') {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+
+  return { line, column, offset: safeOffset };
+}
+
+function extractOffsetFromError(err, parser) {
+  if (parser && Array.isArray(parser.tokens) && Number.isInteger(parser.position)) {
+    const token = parser.tokens[parser.position] || null;
+    if (token && Number.isInteger(token.start)) {
+      return token.start;
+    }
+  }
+
+  const message = err && err.message ? String(err.message) : '';
+  const match = message.match(/\b(?:position|offset)\s+(\d+)\b/i);
+  if (match) {
+    return Number(match[1]);
+  }
+
+  return null;
 }
 
 module.exports = WATParser;
