@@ -6,47 +6,47 @@
     {
       "kind": "nt",
       "name": "watBody",
-      "begin": 106,
+      "begin": 0,
       "children": [
         {
           "kind": "nt",
           "name": "module",
-          "begin": 106,
+          "begin": 0,
           "children": [
             {
               "kind": "t",
-              "token": "'('",
+              "token": "TOKEN__28_",
               "text": "("
             },
             {
               "kind": "t",
-              "token": "'module'",
+              "token": "TOKEN_module",
               "text": "module"
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 139,
+              "begin": 2,
               "children": [
                 {
                   "kind": "nt",
                   "name": "typeDef",
-                  "begin": 139,
+                  "begin": 2,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'type'",
+                      "token": "TOKEN_type",
                       "text": "type"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 145,
+                      "begin": 4,
                       "children": [
                         {
                           "kind": "t",
@@ -54,175 +54,175 @@
                           "text": "$binary_op"
                         }
                       ],
-                      "end": 155
+                      "end": 5
                     },
                     {
                       "kind": "nt",
                       "name": "rectype",
-                      "begin": 156,
+                      "begin": 5,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "subtype",
-                          "begin": 156,
+                          "begin": 5,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "comptype",
-                              "begin": 156,
+                              "begin": 5,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "funcType",
-                                  "begin": 156,
+                                  "begin": 5,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'('",
+                                      "token": "TOKEN__28_",
                                       "text": "("
                                     },
                                     {
                                       "kind": "t",
-                                      "token": "'func'",
+                                      "token": "TOKEN_func",
                                       "text": "func"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "paramDecl",
-                                      "begin": 162,
+                                      "begin": 7,
                                       "children": [
                                         {
                                           "kind": "t",
-                                          "token": "'('",
+                                          "token": "TOKEN__28_",
                                           "text": "("
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "'param'",
+                                          "token": "TOKEN_param",
                                           "text": "param"
                                         },
                                         {
                                           "kind": "nt",
                                           "name": "valueType",
-                                          "begin": 169,
+                                          "begin": 9,
                                           "children": [
                                             {
                                               "kind": "t",
-                                              "token": "'i32'",
+                                              "token": "TOKEN_i32",
                                               "text": "i32"
                                             }
                                           ],
-                                          "end": 172
+                                          "end": 10
                                         },
                                         {
                                           "kind": "nt",
                                           "name": "valueType",
-                                          "begin": 173,
+                                          "begin": 10,
                                           "children": [
                                             {
                                               "kind": "t",
-                                              "token": "'i32'",
+                                              "token": "TOKEN_i32",
                                               "text": "i32"
                                             }
                                           ],
-                                          "end": 176
+                                          "end": 11
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "')'",
+                                          "token": "TOKEN__29_",
                                           "text": ")"
                                         }
                                       ],
-                                      "end": 177
+                                      "end": 12
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "resultDecl",
-                                      "begin": 178,
+                                      "begin": 12,
                                       "children": [
                                         {
                                           "kind": "t",
-                                          "token": "'('",
+                                          "token": "TOKEN__28_",
                                           "text": "("
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "'result'",
+                                          "token": "TOKEN_result",
                                           "text": "result"
                                         },
                                         {
                                           "kind": "nt",
                                           "name": "valueType",
-                                          "begin": 186,
+                                          "begin": 14,
                                           "children": [
                                             {
                                               "kind": "t",
-                                              "token": "'i32'",
+                                              "token": "TOKEN_i32",
                                               "text": "i32"
                                             }
                                           ],
-                                          "end": 189
+                                          "end": 15
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "')'",
+                                          "token": "TOKEN__29_",
                                           "text": ")"
                                         }
                                       ],
-                                      "end": 190
+                                      "end": 16
                                     },
                                     {
                                       "kind": "t",
-                                      "token": "')'",
+                                      "token": "TOKEN__29_",
                                       "text": ")"
                                     }
                                   ],
-                                  "end": 191
+                                  "end": 17
                                 }
                               ],
-                              "end": 191
+                              "end": 17
                             }
                           ],
-                          "end": 191
+                          "end": 17
                         }
                       ],
-                      "end": 191
+                      "end": 17
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 192
+                  "end": 18
                 }
               ],
-              "end": 192
+              "end": 18
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 244,
+              "begin": 18,
               "children": [
                 {
                   "kind": "nt",
                   "name": "tableDef",
-                  "begin": 244,
+                  "begin": 18,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'table'",
+                      "token": "TOKEN_table",
                       "text": "table"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 251,
+                      "begin": 20,
                       "children": [
                         {
                           "kind": "t",
@@ -230,12 +230,12 @@
                           "text": "$table"
                         }
                       ],
-                      "end": 257
+                      "end": 21
                     },
                     {
                       "kind": "nt",
                       "name": "limits",
-                      "begin": 258,
+                      "begin": 21,
                       "children": [
                         {
                           "kind": "t",
@@ -243,56 +243,56 @@
                           "text": "10"
                         }
                       ],
-                      "end": 260
+                      "end": 22
                     },
                     {
                       "kind": "nt",
                       "name": "reftype",
-                      "begin": 261,
+                      "begin": 22,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'funcref'",
+                          "token": "TOKEN_funcref",
                           "text": "funcref"
                         }
                       ],
-                      "end": 268
+                      "end": 23
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 269
+                  "end": 24
                 }
               ],
-              "end": 269
+              "end": 24
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 302,
+              "begin": 24,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 302,
+                  "begin": 24,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 308,
+                      "begin": 26,
                       "children": [
                         {
                           "kind": "t",
@@ -300,37 +300,37 @@
                           "text": "$add"
                         }
                       ],
-                      "end": 312
+                      "end": 27
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 313,
+                      "begin": 27,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'type'",
+                          "token": "TOKEN_type",
                           "text": "type"
                         },
                         {
                           "kind": "nt",
                           "name": "typeidx",
-                          "begin": 319,
+                          "begin": 29,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 319,
+                              "begin": 29,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 319,
+                                  "begin": 29,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -338,38 +338,38 @@
                                       "text": "$binary_op"
                                     }
                                   ],
-                                  "end": 329
+                                  "end": 30
                                 }
                               ],
-                              "end": 329
+                              "end": 30
                             }
                           ],
-                          "end": 329
+                          "end": 30
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 331,
+                          "begin": 31,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 338,
+                              "begin": 33,
                               "children": [
                                 {
                                   "kind": "t",
@@ -377,48 +377,48 @@
                                   "text": "$a"
                                 }
                               ],
-                              "end": 340
+                              "end": 34
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 341,
+                              "begin": 34,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 344
+                              "end": 35
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 345
+                          "end": 36
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 346,
+                          "begin": 36,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 353,
+                              "begin": 38,
                               "children": [
                                 {
                                   "kind": "t",
@@ -426,102 +426,102 @@
                                   "text": "$b"
                                 }
                               ],
-                              "end": 355
+                              "end": 39
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 356,
+                              "begin": 39,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 359
+                              "end": 40
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 360
+                          "end": 41
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 361,
+                          "begin": 41,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 369,
+                              "begin": 43,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 372
+                              "end": 44
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 373
+                          "end": 45
                         }
                       ],
-                      "end": 373
+                      "end": 45
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 378,
+                      "begin": 45,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 378,
+                          "begin": 45,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 378,
+                              "begin": 45,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 378,
+                                  "begin": 45,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 388,
+                                      "begin": 46,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 388,
+                                          "begin": 46,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -529,49 +529,49 @@
                                               "text": "$a"
                                             }
                                           ],
-                                          "end": 390
+                                          "end": 47
                                         }
                                       ],
-                                      "end": 390
+                                      "end": 47
                                     }
                                   ],
-                                  "end": 390
+                                  "end": 47
                                 }
                               ],
-                              "end": 390
+                              "end": 47
                             }
                           ],
-                          "end": 390
+                          "end": 47
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 395,
+                          "begin": 47,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 395,
+                              "begin": 47,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 395,
+                                  "begin": 47,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 405,
+                                      "begin": 48,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 405,
+                                          "begin": 48,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -579,39 +579,39 @@
                                               "text": "$b"
                                             }
                                           ],
-                                          "end": 407
+                                          "end": 49
                                         }
                                       ],
-                                      "end": 407
+                                      "end": 49
                                     }
                                   ],
-                                  "end": 407
+                                  "end": 49
                                 }
                               ],
-                              "end": 407
+                              "end": 49
                             }
                           ],
-                          "end": 407
+                          "end": 49
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 412,
+                          "begin": 49,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 412,
+                              "begin": 49,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 412,
+                                  "begin": 49,
                                   "children": [
                                     {
                                       "kind": "nt",
-                                      "name": "memLikeInstr",
-                                      "begin": 412,
+                                      "name": "numericLikeInstr",
+                                      "begin": 49,
                                       "children": [
                                         {
                                           "kind": "t",
@@ -619,55 +619,55 @@
                                           "text": "i32.add"
                                         }
                                       ],
-                                      "end": 419
+                                      "end": 50
                                     }
                                   ],
-                                  "end": 419
+                                  "end": 50
                                 }
                               ],
-                              "end": 419
+                              "end": 50
                             }
                           ],
-                          "end": 419
+                          "end": 50
                         }
                       ],
-                      "end": 419
+                      "end": 50
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 420
+                  "end": 51
                 }
               ],
-              "end": 420
+              "end": 51
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 426,
+              "begin": 51,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 426,
+                  "begin": 51,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 432,
+                      "begin": 53,
                       "children": [
                         {
                           "kind": "t",
@@ -675,37 +675,37 @@
                           "text": "$sub"
                         }
                       ],
-                      "end": 436
+                      "end": 54
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 437,
+                      "begin": 54,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'type'",
+                          "token": "TOKEN_type",
                           "text": "type"
                         },
                         {
                           "kind": "nt",
                           "name": "typeidx",
-                          "begin": 443,
+                          "begin": 56,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 443,
+                              "begin": 56,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 443,
+                                  "begin": 56,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -713,38 +713,38 @@
                                       "text": "$binary_op"
                                     }
                                   ],
-                                  "end": 453
+                                  "end": 57
                                 }
                               ],
-                              "end": 453
+                              "end": 57
                             }
                           ],
-                          "end": 453
+                          "end": 57
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 455,
+                          "begin": 58,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 462,
+                              "begin": 60,
                               "children": [
                                 {
                                   "kind": "t",
@@ -752,48 +752,48 @@
                                   "text": "$a"
                                 }
                               ],
-                              "end": 464
+                              "end": 61
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 465,
+                              "begin": 61,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 468
+                              "end": 62
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 469
+                          "end": 63
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 470,
+                          "begin": 63,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 477,
+                              "begin": 65,
                               "children": [
                                 {
                                   "kind": "t",
@@ -801,102 +801,102 @@
                                   "text": "$b"
                                 }
                               ],
-                              "end": 479
+                              "end": 66
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 480,
+                              "begin": 66,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 483
+                              "end": 67
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 484
+                          "end": 68
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 485,
+                          "begin": 68,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 493,
+                              "begin": 70,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 496
+                              "end": 71
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 497
+                          "end": 72
                         }
                       ],
-                      "end": 497
+                      "end": 72
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 502,
+                      "begin": 72,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 502,
+                          "begin": 72,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 502,
+                              "begin": 72,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 502,
+                                  "begin": 72,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 512,
+                                      "begin": 73,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 512,
+                                          "begin": 73,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -904,49 +904,49 @@
                                               "text": "$a"
                                             }
                                           ],
-                                          "end": 514
+                                          "end": 74
                                         }
                                       ],
-                                      "end": 514
+                                      "end": 74
                                     }
                                   ],
-                                  "end": 514
+                                  "end": 74
                                 }
                               ],
-                              "end": 514
+                              "end": 74
                             }
                           ],
-                          "end": 514
+                          "end": 74
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 519,
+                          "begin": 74,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 519,
+                              "begin": 74,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 519,
+                                  "begin": 74,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 529,
+                                      "begin": 75,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 529,
+                                          "begin": 75,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -954,39 +954,39 @@
                                               "text": "$b"
                                             }
                                           ],
-                                          "end": 531
+                                          "end": 76
                                         }
                                       ],
-                                      "end": 531
+                                      "end": 76
                                     }
                                   ],
-                                  "end": 531
+                                  "end": 76
                                 }
                               ],
-                              "end": 531
+                              "end": 76
                             }
                           ],
-                          "end": 531
+                          "end": 76
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 536,
+                          "begin": 76,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 536,
+                              "begin": 76,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 536,
+                                  "begin": 76,
                                   "children": [
                                     {
                                       "kind": "nt",
-                                      "name": "memLikeInstr",
-                                      "begin": 536,
+                                      "name": "numericLikeInstr",
+                                      "begin": 76,
                                       "children": [
                                         {
                                           "kind": "t",
@@ -994,55 +994,55 @@
                                           "text": "i32.sub"
                                         }
                                       ],
-                                      "end": 543
+                                      "end": 77
                                     }
                                   ],
-                                  "end": 543
+                                  "end": 77
                                 }
                               ],
-                              "end": 543
+                              "end": 77
                             }
                           ],
-                          "end": 543
+                          "end": 77
                         }
                       ],
-                      "end": 543
+                      "end": 77
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 544
+                  "end": 78
                 }
               ],
-              "end": 544
+              "end": 78
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 550,
+              "begin": 78,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 550,
+                  "begin": 78,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 556,
+                      "begin": 80,
                       "children": [
                         {
                           "kind": "t",
@@ -1050,37 +1050,37 @@
                           "text": "$mul"
                         }
                       ],
-                      "end": 560
+                      "end": 81
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 561,
+                      "begin": 81,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'type'",
+                          "token": "TOKEN_type",
                           "text": "type"
                         },
                         {
                           "kind": "nt",
                           "name": "typeidx",
-                          "begin": 567,
+                          "begin": 83,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 567,
+                              "begin": 83,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 567,
+                                  "begin": 83,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -1088,38 +1088,38 @@
                                       "text": "$binary_op"
                                     }
                                   ],
-                                  "end": 577
+                                  "end": 84
                                 }
                               ],
-                              "end": 577
+                              "end": 84
                             }
                           ],
-                          "end": 577
+                          "end": 84
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 579,
+                          "begin": 85,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 586,
+                              "begin": 87,
                               "children": [
                                 {
                                   "kind": "t",
@@ -1127,48 +1127,48 @@
                                   "text": "$a"
                                 }
                               ],
-                              "end": 588
+                              "end": 88
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 589,
+                              "begin": 88,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 592
+                              "end": 89
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 593
+                          "end": 90
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 594,
+                          "begin": 90,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 601,
+                              "begin": 92,
                               "children": [
                                 {
                                   "kind": "t",
@@ -1176,102 +1176,102 @@
                                   "text": "$b"
                                 }
                               ],
-                              "end": 603
+                              "end": 93
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 604,
+                              "begin": 93,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 607
+                              "end": 94
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 608
+                          "end": 95
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 609,
+                          "begin": 95,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 617,
+                              "begin": 97,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 620
+                              "end": 98
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 621
+                          "end": 99
                         }
                       ],
-                      "end": 621
+                      "end": 99
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 626,
+                      "begin": 99,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 626,
+                          "begin": 99,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 626,
+                              "begin": 99,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 626,
+                                  "begin": 99,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 636,
+                                      "begin": 100,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 636,
+                                          "begin": 100,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1279,49 +1279,49 @@
                                               "text": "$a"
                                             }
                                           ],
-                                          "end": 638
+                                          "end": 101
                                         }
                                       ],
-                                      "end": 638
+                                      "end": 101
                                     }
                                   ],
-                                  "end": 638
+                                  "end": 101
                                 }
                               ],
-                              "end": 638
+                              "end": 101
                             }
                           ],
-                          "end": 638
+                          "end": 101
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 643,
+                          "begin": 101,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 643,
+                              "begin": 101,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 643,
+                                  "begin": 101,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 653,
+                                      "begin": 102,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 653,
+                                          "begin": 102,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1329,39 +1329,39 @@
                                               "text": "$b"
                                             }
                                           ],
-                                          "end": 655
+                                          "end": 103
                                         }
                                       ],
-                                      "end": 655
+                                      "end": 103
                                     }
                                   ],
-                                  "end": 655
+                                  "end": 103
                                 }
                               ],
-                              "end": 655
+                              "end": 103
                             }
                           ],
-                          "end": 655
+                          "end": 103
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 660,
+                          "begin": 103,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 660,
+                              "begin": 103,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 660,
+                                  "begin": 103,
                                   "children": [
                                     {
                                       "kind": "nt",
-                                      "name": "memLikeInstr",
-                                      "begin": 660,
+                                      "name": "numericLikeInstr",
+                                      "begin": 103,
                                       "children": [
                                         {
                                           "kind": "t",
@@ -1369,85 +1369,85 @@
                                           "text": "i32.mul"
                                         }
                                       ],
-                                      "end": 667
+                                      "end": 104
                                     }
                                   ],
-                                  "end": 667
+                                  "end": 104
                                 }
                               ],
-                              "end": 667
+                              "end": 104
                             }
                           ],
-                          "end": 667
+                          "end": 104
                         }
                       ],
-                      "end": 667
+                      "end": 104
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 668
+                  "end": 105
                 }
               ],
-              "end": 668
+              "end": 105
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 711,
+              "begin": 105,
               "children": [
                 {
                   "kind": "nt",
                   "name": "elemDef",
-                  "begin": 711,
+                  "begin": 105,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'elem'",
+                      "token": "TOKEN_elem",
                       "text": "elem"
                     },
                     {
                       "kind": "nt",
                       "name": "offset",
-                      "begin": 717,
+                      "begin": 107,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "expr",
-                          "begin": 717,
+                          "begin": 107,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "instr",
-                              "begin": 717,
+                              "begin": 107,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "foldedInstr",
-                                  "begin": 717,
+                                  "begin": 107,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'('",
+                                      "token": "TOKEN__28_",
                                       "text": "("
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "nonBlockInstr",
-                                      "begin": 718,
+                                      "begin": 108,
                                       "children": [
                                         {
                                           "kind": "nt",
-                                          "name": "numericLikeInstr",
-                                          "begin": 718,
+                                          "name": "simdLikeInstr",
+                                          "begin": 108,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1455,57 +1455,65 @@
                                               "text": "i32.const"
                                             },
                                             {
-                                              "kind": "t",
-                                              "token": "float",
-                                              "text": "0"
+                                              "kind": "nt",
+                                              "name": "laneidx",
+                                              "begin": 109,
+                                              "children": [
+                                                {
+                                                  "kind": "t",
+                                                  "token": "nat",
+                                                  "text": "0"
+                                                }
+                                              ],
+                                              "end": 110
                                             }
                                           ],
-                                          "end": 729
+                                          "end": 110
                                         }
                                       ],
-                                      "end": 729
+                                      "end": 110
                                     },
                                     {
                                       "kind": "t",
-                                      "token": "')'",
+                                      "token": "TOKEN__29_",
                                       "text": ")"
                                     }
                                   ],
-                                  "end": 730
+                                  "end": 111
                                 }
                               ],
-                              "end": 730
+                              "end": 111
                             }
                           ],
-                          "end": 730
+                          "end": 111
                         }
                       ],
-                      "end": 730
+                      "end": 111
                     },
                     {
                       "kind": "nt",
                       "name": "elemList",
-                      "begin": 731,
+                      "begin": 111,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "funcidx",
-                          "begin": 736,
+                          "begin": 112,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 736,
+                              "begin": 112,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 736,
+                                  "begin": 112,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -1513,28 +1521,28 @@
                                       "text": "$add"
                                     }
                                   ],
-                                  "end": 740
+                                  "end": 113
                                 }
                               ],
-                              "end": 740
+                              "end": 113
                             }
                           ],
-                          "end": 740
+                          "end": 113
                         },
                         {
                           "kind": "nt",
                           "name": "funcidx",
-                          "begin": 741,
+                          "begin": 113,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 741,
+                              "begin": 113,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 741,
+                                  "begin": 113,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -1542,28 +1550,28 @@
                                       "text": "$sub"
                                     }
                                   ],
-                                  "end": 745
+                                  "end": 114
                                 }
                               ],
-                              "end": 745
+                              "end": 114
                             }
                           ],
-                          "end": 745
+                          "end": 114
                         },
                         {
                           "kind": "nt",
                           "name": "funcidx",
-                          "begin": 746,
+                          "begin": 114,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "index",
-                              "begin": 746,
+                              "begin": 114,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "id",
-                                  "begin": 746,
+                                  "begin": 114,
                                   "children": [
                                     {
                                       "kind": "t",
@@ -1571,52 +1579,52 @@
                                       "text": "$mul"
                                     }
                                   ],
-                                  "end": 750
+                                  "end": 115
                                 }
                               ],
-                              "end": 750
+                              "end": 115
                             }
                           ],
-                          "end": 750
+                          "end": 115
                         }
                       ],
-                      "end": 750
+                      "end": 115
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 751
+                  "end": 116
                 }
               ],
-              "end": 751
+              "end": 116
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 787,
+              "begin": 116,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 787,
+                  "begin": 116,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 793,
+                      "begin": 118,
                       "children": [
                         {
                           "kind": "t",
@@ -1624,32 +1632,32 @@
                           "text": "$call_indirect"
                         }
                       ],
-                      "end": 807
+                      "end": 119
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 808,
+                      "begin": 119,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 808,
+                          "begin": 119,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 815,
+                              "begin": 121,
                               "children": [
                                 {
                                   "kind": "t",
@@ -1657,48 +1665,48 @@
                                   "text": "$index"
                                 }
                               ],
-                              "end": 821
+                              "end": 122
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 822,
+                              "begin": 122,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 825
+                              "end": 123
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 826
+                          "end": 124
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 827,
+                          "begin": 124,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 834,
+                              "begin": 126,
                               "children": [
                                 {
                                   "kind": "t",
@@ -1706,48 +1714,48 @@
                                   "text": "$a"
                                 }
                               ],
-                              "end": 836
+                              "end": 127
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 837,
+                              "begin": 127,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 840
+                              "end": 128
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 841
+                          "end": 129
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 842,
+                          "begin": 129,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 849,
+                              "begin": 131,
                               "children": [
                                 {
                                   "kind": "t",
@@ -1755,102 +1763,102 @@
                                   "text": "$b"
                                 }
                               ],
-                              "end": 851
+                              "end": 132
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 852,
+                              "begin": 132,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 855
+                              "end": 133
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 856
+                          "end": 134
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 857,
+                          "begin": 134,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 865,
+                              "begin": 136,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 868
+                              "end": 137
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 869
+                          "end": 138
                         }
                       ],
-                      "end": 869
+                      "end": 138
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 874,
+                      "begin": 138,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 874,
+                          "begin": 138,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 874,
+                              "begin": 138,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 874,
+                                  "begin": 138,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 884,
+                                      "begin": 139,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 884,
+                                          "begin": 139,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1858,49 +1866,49 @@
                                               "text": "$a"
                                             }
                                           ],
-                                          "end": 886
+                                          "end": 140
                                         }
                                       ],
-                                      "end": 886
+                                      "end": 140
                                     }
                                   ],
-                                  "end": 886
+                                  "end": 140
                                 }
                               ],
-                              "end": 886
+                              "end": 140
                             }
                           ],
-                          "end": 886
+                          "end": 140
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 891,
+                          "begin": 140,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 891,
+                              "begin": 140,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 891,
+                                  "begin": 140,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 901,
+                                      "begin": 141,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 901,
+                                          "begin": 141,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1908,49 +1916,49 @@
                                               "text": "$b"
                                             }
                                           ],
-                                          "end": 903
+                                          "end": 142
                                         }
                                       ],
-                                      "end": 903
+                                      "end": 142
                                     }
                                   ],
-                                  "end": 903
+                                  "end": 142
                                 }
                               ],
-                              "end": 903
+                              "end": 142
                             }
                           ],
-                          "end": 903
+                          "end": 142
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 908,
+                          "begin": 142,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 908,
+                              "begin": 142,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 908,
+                                  "begin": 142,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 918,
+                                      "begin": 143,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 918,
+                                          "begin": 143,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -1958,69 +1966,69 @@
                                               "text": "$index"
                                             }
                                           ],
-                                          "end": 924
+                                          "end": 144
                                         }
                                       ],
-                                      "end": 924
+                                      "end": 144
                                     }
                                   ],
-                                  "end": 924
+                                  "end": 144
                                 }
                               ],
-                              "end": 924
+                              "end": 144
                             }
                           ],
-                          "end": 924
+                          "end": 144
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 929,
+                          "begin": 144,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 929,
+                              "begin": 144,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 929,
+                                  "begin": 144,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'call_indirect'",
+                                      "token": "TOKEN_call_5F_indirect",
                                       "text": "call_indirect"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "typeuse",
-                                      "begin": 943,
+                                      "begin": 145,
                                       "children": [
                                         {
                                           "kind": "t",
-                                          "token": "'('",
+                                          "token": "TOKEN__28_",
                                           "text": "("
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "'type'",
+                                          "token": "TOKEN_type",
                                           "text": "type"
                                         },
                                         {
                                           "kind": "nt",
                                           "name": "typeidx",
-                                          "begin": 949,
+                                          "begin": 147,
                                           "children": [
                                             {
                                               "kind": "nt",
                                               "name": "index",
-                                              "begin": 949,
+                                              "begin": 147,
                                               "children": [
                                                 {
                                                   "kind": "nt",
                                                   "name": "id",
-                                                  "begin": 949,
+                                                  "begin": 147,
                                                   "children": [
                                                     {
                                                       "kind": "t",
@@ -2028,69 +2036,69 @@
                                                       "text": "$binary_op"
                                                     }
                                                   ],
-                                                  "end": 959
+                                                  "end": 148
                                                 }
                                               ],
-                                              "end": 959
+                                              "end": 148
                                             }
                                           ],
-                                          "end": 959
+                                          "end": 148
                                         },
                                         {
                                           "kind": "t",
-                                          "token": "')'",
+                                          "token": "TOKEN__29_",
                                           "text": ")"
                                         }
                                       ],
-                                      "end": 960
+                                      "end": 149
                                     }
                                   ],
-                                  "end": 960
+                                  "end": 149
                                 }
                               ],
-                              "end": 960
+                              "end": 149
                             }
                           ],
-                          "end": 960
+                          "end": 149
                         }
                       ],
-                      "end": 960
+                      "end": 149
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 961
+                  "end": 150
                 }
               ],
-              "end": 961
+              "end": 150
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 989,
+              "begin": 150,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 989,
+                  "begin": 150,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 995,
+                      "begin": 152,
                       "children": [
                         {
                           "kind": "t",
@@ -2098,32 +2106,32 @@
                           "text": "$table_get"
                         }
                       ],
-                      "end": 1005
+                      "end": 153
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 1006,
+                      "begin": 153,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 1006,
+                          "begin": 153,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1013,
+                              "begin": 155,
                               "children": [
                                 {
                                   "kind": "t",
@@ -2131,110 +2139,110 @@
                                   "text": "$index"
                                 }
                               ],
-                              "end": 1019
+                              "end": 156
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1020,
+                              "begin": 156,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 1023
+                              "end": 157
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1024
+                          "end": 158
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 1025,
+                          "begin": 158,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1033,
+                              "begin": 160,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "reftype",
-                                  "begin": 1033,
+                                  "begin": 160,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'funcref'",
+                                      "token": "TOKEN_funcref",
                                       "text": "funcref"
                                     }
                                   ],
-                                  "end": 1040
+                                  "end": 161
                                 }
                               ],
-                              "end": 1040
+                              "end": 161
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1041
+                          "end": 162
                         }
                       ],
-                      "end": 1041
+                      "end": 162
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 1046,
+                      "begin": 162,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1046,
+                          "begin": 162,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1046,
+                              "begin": 162,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1046,
+                                  "begin": 162,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 1056,
+                                      "begin": 163,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 1056,
+                                          "begin": 163,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -2242,54 +2250,54 @@
                                               "text": "$index"
                                             }
                                           ],
-                                          "end": 1062
+                                          "end": 164
                                         }
                                       ],
-                                      "end": 1062
+                                      "end": 164
                                     }
                                   ],
-                                  "end": 1062
+                                  "end": 164
                                 }
                               ],
-                              "end": 1062
+                              "end": 164
                             }
                           ],
-                          "end": 1062
+                          "end": 164
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1067,
+                          "begin": 164,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1067,
+                              "begin": 164,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1067,
+                                  "begin": 164,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'table.get'",
+                                      "token": "TOKEN_table_2E_get",
                                       "text": "table.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "tableidx",
-                                      "begin": 1077,
+                                      "begin": 165,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "index",
-                                          "begin": 1077,
+                                          "begin": 165,
                                           "children": [
                                             {
                                               "kind": "nt",
                                               "name": "id",
-                                              "begin": 1077,
+                                              "begin": 165,
                                               "children": [
                                                 {
                                                   "kind": "t",
@@ -2297,61 +2305,61 @@
                                                   "text": "$table"
                                                 }
                                               ],
-                                              "end": 1083
+                                              "end": 166
                                             }
                                           ],
-                                          "end": 1083
+                                          "end": 166
                                         }
                                       ],
-                                      "end": 1083
+                                      "end": 166
                                     }
                                   ],
-                                  "end": 1083
+                                  "end": 166
                                 }
                               ],
-                              "end": 1083
+                              "end": 166
                             }
                           ],
-                          "end": 1083
+                          "end": 166
                         }
                       ],
-                      "end": 1083
+                      "end": 166
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1084
+                  "end": 167
                 }
               ],
-              "end": 1084
+              "end": 167
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1090,
+              "begin": 167,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 1090,
+                  "begin": 167,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 1096,
+                      "begin": 169,
                       "children": [
                         {
                           "kind": "t",
@@ -2359,32 +2367,32 @@
                           "text": "$table_set"
                         }
                       ],
-                      "end": 1106
+                      "end": 170
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 1107,
+                      "begin": 170,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 1107,
+                          "begin": 170,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1114,
+                              "begin": 172,
                               "children": [
                                 {
                                   "kind": "t",
@@ -2392,48 +2400,48 @@
                                   "text": "$index"
                                 }
                               ],
-                              "end": 1120
+                              "end": 173
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1121,
+                              "begin": 173,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 1124
+                              "end": 174
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1125
+                          "end": 175
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 1126,
+                          "begin": 175,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1133,
+                              "begin": 177,
                               "children": [
                                 {
                                   "kind": "t",
@@ -2441,74 +2449,74 @@
                                   "text": "$func"
                                 }
                               ],
-                              "end": 1138
+                              "end": 178
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1139,
+                              "begin": 178,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "reftype",
-                                  "begin": 1139,
+                                  "begin": 178,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'funcref'",
+                                      "token": "TOKEN_funcref",
                                       "text": "funcref"
                                     }
                                   ],
-                                  "end": 1146
+                                  "end": 179
                                 }
                               ],
-                              "end": 1146
+                              "end": 179
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1147
+                          "end": 180
                         }
                       ],
-                      "end": 1147
+                      "end": 180
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 1152,
+                      "begin": 180,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1152,
+                          "begin": 180,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1152,
+                              "begin": 180,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1152,
+                                  "begin": 180,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 1162,
+                                      "begin": 181,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 1162,
+                                          "begin": 181,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -2516,49 +2524,49 @@
                                               "text": "$index"
                                             }
                                           ],
-                                          "end": 1168
+                                          "end": 182
                                         }
                                       ],
-                                      "end": 1168
+                                      "end": 182
                                     }
                                   ],
-                                  "end": 1168
+                                  "end": 182
                                 }
                               ],
-                              "end": 1168
+                              "end": 182
                             }
                           ],
-                          "end": 1168
+                          "end": 182
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1173,
+                          "begin": 182,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1173,
+                              "begin": 182,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1173,
+                                  "begin": 182,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 1183,
+                                      "begin": 183,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 1183,
+                                          "begin": 183,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -2566,54 +2574,54 @@
                                               "text": "$func"
                                             }
                                           ],
-                                          "end": 1188
+                                          "end": 184
                                         }
                                       ],
-                                      "end": 1188
+                                      "end": 184
                                     }
                                   ],
-                                  "end": 1188
+                                  "end": 184
                                 }
                               ],
-                              "end": 1188
+                              "end": 184
                             }
                           ],
-                          "end": 1188
+                          "end": 184
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1193,
+                          "begin": 184,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1193,
+                              "begin": 184,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1193,
+                                  "begin": 184,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'table.set'",
+                                      "token": "TOKEN_table_2E_set",
                                       "text": "table.set"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "tableidx",
-                                      "begin": 1203,
+                                      "begin": 185,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "index",
-                                          "begin": 1203,
+                                          "begin": 185,
                                           "children": [
                                             {
                                               "kind": "nt",
                                               "name": "id",
-                                              "begin": 1203,
+                                              "begin": 185,
                                               "children": [
                                                 {
                                                   "kind": "t",
@@ -2621,61 +2629,61 @@
                                                   "text": "$table"
                                                 }
                                               ],
-                                              "end": 1209
+                                              "end": 186
                                             }
                                           ],
-                                          "end": 1209
+                                          "end": 186
                                         }
                                       ],
-                                      "end": 1209
+                                      "end": 186
                                     }
                                   ],
-                                  "end": 1209
+                                  "end": 186
                                 }
                               ],
-                              "end": 1209
+                              "end": 186
                             }
                           ],
-                          "end": 1209
+                          "end": 186
                         }
                       ],
-                      "end": 1209
+                      "end": 186
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1210
+                  "end": 187
                 }
               ],
-              "end": 1210
+              "end": 187
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1216,
+              "begin": 187,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 1216,
+                  "begin": 187,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 1222,
+                      "begin": 189,
                       "children": [
                         {
                           "kind": "t",
@@ -2683,91 +2691,91 @@
                           "text": "$table_size"
                         }
                       ],
-                      "end": 1233
+                      "end": 190
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 1234,
+                      "begin": 190,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 1234,
+                          "begin": 190,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1242,
+                              "begin": 192,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 1245
+                              "end": 193
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1246
+                          "end": 194
                         }
                       ],
-                      "end": 1246
+                      "end": 194
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 1251,
+                      "begin": 194,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1251,
+                          "begin": 194,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1251,
+                              "begin": 194,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1251,
+                                  "begin": 194,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'table.size'",
+                                      "token": "TOKEN_table_2E_size",
                                       "text": "table.size"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "tableidx",
-                                      "begin": 1262,
+                                      "begin": 195,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "index",
-                                          "begin": 1262,
+                                          "begin": 195,
                                           "children": [
                                             {
                                               "kind": "nt",
                                               "name": "id",
-                                              "begin": 1262,
+                                              "begin": 195,
                                               "children": [
                                                 {
                                                   "kind": "t",
@@ -2775,61 +2783,61 @@
                                                   "text": "$table"
                                                 }
                                               ],
-                                              "end": 1268
+                                              "end": 196
                                             }
                                           ],
-                                          "end": 1268
+                                          "end": 196
                                         }
                                       ],
-                                      "end": 1268
+                                      "end": 196
                                     }
                                   ],
-                                  "end": 1268
+                                  "end": 196
                                 }
                               ],
-                              "end": 1268
+                              "end": 196
                             }
                           ],
-                          "end": 1268
+                          "end": 196
                         }
                       ],
-                      "end": 1268
+                      "end": 196
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1269
+                  "end": 197
                 }
               ],
-              "end": 1269
+              "end": 197
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1275,
+              "begin": 197,
               "children": [
                 {
                   "kind": "nt",
                   "name": "funcDef",
-                  "begin": 1275,
+                  "begin": 197,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'func'",
+                      "token": "TOKEN_func",
                       "text": "func"
                     },
                     {
                       "kind": "nt",
                       "name": "id",
-                      "begin": 1281,
+                      "begin": 199,
                       "children": [
                         {
                           "kind": "t",
@@ -2837,32 +2845,32 @@
                           "text": "$table_grow"
                         }
                       ],
-                      "end": 1292
+                      "end": 200
                     },
                     {
                       "kind": "nt",
                       "name": "typeuse",
-                      "begin": 1293,
+                      "begin": 200,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 1293,
+                          "begin": 200,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1300,
+                              "begin": 202,
                               "children": [
                                 {
                                   "kind": "t",
@@ -2870,48 +2878,48 @@
                                   "text": "$delta"
                                 }
                               ],
-                              "end": 1306
+                              "end": 203
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1307,
+                              "begin": 203,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 1310
+                              "end": 204
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1311
+                          "end": 205
                         },
                         {
                           "kind": "nt",
                           "name": "paramDecl",
-                          "begin": 1312,
+                          "begin": 205,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'param'",
+                              "token": "TOKEN_param",
                               "text": "param"
                             },
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1319,
+                              "begin": 207,
                               "children": [
                                 {
                                   "kind": "t",
@@ -2919,110 +2927,110 @@
                                   "text": "$func"
                                 }
                               ],
-                              "end": 1324
+                              "end": 208
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1325,
+                              "begin": 208,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "reftype",
-                                  "begin": 1325,
+                                  "begin": 208,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'funcref'",
+                                      "token": "TOKEN_funcref",
                                       "text": "funcref"
                                     }
                                   ],
-                                  "end": 1332
+                                  "end": 209
                                 }
                               ],
-                              "end": 1332
+                              "end": 209
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1333
+                          "end": 210
                         },
                         {
                           "kind": "nt",
                           "name": "resultDecl",
-                          "begin": 1334,
+                          "begin": 210,
                           "children": [
                             {
                               "kind": "t",
-                              "token": "'('",
+                              "token": "TOKEN__28_",
                               "text": "("
                             },
                             {
                               "kind": "t",
-                              "token": "'result'",
+                              "token": "TOKEN_result",
                               "text": "result"
                             },
                             {
                               "kind": "nt",
                               "name": "valueType",
-                              "begin": 1342,
+                              "begin": 212,
                               "children": [
                                 {
                                   "kind": "t",
-                                  "token": "'i32'",
+                                  "token": "TOKEN_i32",
                                   "text": "i32"
                                 }
                               ],
-                              "end": 1345
+                              "end": 213
                             },
                             {
                               "kind": "t",
-                              "token": "')'",
+                              "token": "TOKEN__29_",
                               "text": ")"
                             }
                           ],
-                          "end": 1346
+                          "end": 214
                         }
                       ],
-                      "end": 1346
+                      "end": 214
                     },
                     {
                       "kind": "nt",
                       "name": "expr",
-                      "begin": 1422,
+                      "begin": 214,
                       "children": [
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1422,
+                          "begin": 214,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1422,
+                              "begin": 214,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1422,
+                                  "begin": 214,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 1432,
+                                      "begin": 215,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 1432,
+                                          "begin": 215,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -3030,49 +3038,49 @@
                                               "text": "$func"
                                             }
                                           ],
-                                          "end": 1437
+                                          "end": 216
                                         }
                                       ],
-                                      "end": 1437
+                                      "end": 216
                                     }
                                   ],
-                                  "end": 1437
+                                  "end": 216
                                 }
                               ],
-                              "end": 1437
+                              "end": 216
                             }
                           ],
-                          "end": 1437
+                          "end": 216
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1442,
+                          "begin": 216,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1442,
+                              "begin": 216,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1442,
+                                  "begin": 216,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'local.get'",
+                                      "token": "TOKEN_local_2E_get",
                                       "text": "local.get"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "index",
-                                      "begin": 1452,
+                                      "begin": 217,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "id",
-                                          "begin": 1452,
+                                          "begin": 217,
                                           "children": [
                                             {
                                               "kind": "t",
@@ -3080,54 +3088,54 @@
                                               "text": "$delta"
                                             }
                                           ],
-                                          "end": 1458
+                                          "end": 218
                                         }
                                       ],
-                                      "end": 1458
+                                      "end": 218
                                     }
                                   ],
-                                  "end": 1458
+                                  "end": 218
                                 }
                               ],
-                              "end": 1458
+                              "end": 218
                             }
                           ],
-                          "end": 1458
+                          "end": 218
                         },
                         {
                           "kind": "nt",
                           "name": "instr",
-                          "begin": 1463,
+                          "begin": 218,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "seqInstr",
-                              "begin": 1463,
+                              "begin": 218,
                               "children": [
                                 {
                                   "kind": "nt",
                                   "name": "nonBlockInstr",
-                                  "begin": 1463,
+                                  "begin": 218,
                                   "children": [
                                     {
                                       "kind": "t",
-                                      "token": "'table.grow'",
+                                      "token": "TOKEN_table_2E_grow",
                                       "text": "table.grow"
                                     },
                                     {
                                       "kind": "nt",
                                       "name": "tableidx",
-                                      "begin": 1474,
+                                      "begin": 219,
                                       "children": [
                                         {
                                           "kind": "nt",
                                           "name": "index",
-                                          "begin": 1474,
+                                          "begin": 219,
                                           "children": [
                                             {
                                               "kind": "nt",
                                               "name": "id",
-                                              "begin": 1474,
+                                              "begin": 219,
                                               "children": [
                                                 {
                                                   "kind": "t",
@@ -3135,55 +3143,55 @@
                                                   "text": "$table"
                                                 }
                                               ],
-                                              "end": 1480
+                                              "end": 220
                                             }
                                           ],
-                                          "end": 1480
+                                          "end": 220
                                         }
                                       ],
-                                      "end": 1480
+                                      "end": 220
                                     }
                                   ],
-                                  "end": 1480
+                                  "end": 220
                                 }
                               ],
-                              "end": 1480
+                              "end": 220
                             }
                           ],
-                          "end": 1480
+                          "end": 220
                         }
                       ],
-                      "end": 1480
+                      "end": 220
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1481
+                  "end": 221
                 }
               ],
-              "end": 1481
+              "end": 221
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1487,
+              "begin": 221,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1487,
+                  "begin": 221,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3194,27 +3202,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1503,
+                      "begin": 224,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'table'",
+                          "token": "TOKEN_table",
                           "text": "table"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1510,
+                          "begin": 226,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1510,
+                              "begin": 226,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3222,48 +3230,48 @@
                                   "text": "$table"
                                 }
                               ],
-                              "end": 1516
+                              "end": 227
                             }
                           ],
-                          "end": 1516
+                          "end": 227
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1517
+                      "end": 228
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1518
+                  "end": 229
                 }
               ],
-              "end": 1518
+              "end": 229
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1521,
+              "begin": 229,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1521,
+                  "begin": 229,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3274,27 +3282,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1545,
+                      "begin": 232,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1551,
+                          "begin": 234,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1551,
+                              "begin": 234,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3302,48 +3310,48 @@
                                   "text": "$call_indirect"
                                 }
                               ],
-                              "end": 1565
+                              "end": 235
                             }
                           ],
-                          "end": 1565
+                          "end": 235
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1566
+                      "end": 236
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1567
+                  "end": 237
                 }
               ],
-              "end": 1567
+              "end": 237
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1570,
+              "begin": 237,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1570,
+                  "begin": 237,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3354,27 +3362,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1590,
+                      "begin": 240,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1596,
+                          "begin": 242,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1596,
+                              "begin": 242,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3382,48 +3390,48 @@
                                   "text": "$table_get"
                                 }
                               ],
-                              "end": 1606
+                              "end": 243
                             }
                           ],
-                          "end": 1606
+                          "end": 243
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1607
+                      "end": 244
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1608
+                  "end": 245
                 }
               ],
-              "end": 1608
+              "end": 245
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1611,
+              "begin": 245,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1611,
+                  "begin": 245,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3434,27 +3442,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1631,
+                      "begin": 248,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1637,
+                          "begin": 250,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1637,
+                              "begin": 250,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3462,48 +3470,48 @@
                                   "text": "$table_set"
                                 }
                               ],
-                              "end": 1647
+                              "end": 251
                             }
                           ],
-                          "end": 1647
+                          "end": 251
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1648
+                      "end": 252
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1649
+                  "end": 253
                 }
               ],
-              "end": 1649
+              "end": 253
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1652,
+              "begin": 253,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1652,
+                  "begin": 253,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3514,27 +3522,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1673,
+                      "begin": 256,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1679,
+                          "begin": 258,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1679,
+                              "begin": 258,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3542,48 +3550,48 @@
                                   "text": "$table_size"
                                 }
                               ],
-                              "end": 1690
+                              "end": 259
                             }
                           ],
-                          "end": 1690
+                          "end": 259
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1691
+                      "end": 260
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1692
+                  "end": 261
                 }
               ],
-              "end": 1692
+              "end": 261
             },
             {
               "kind": "nt",
               "name": "moduleField",
-              "begin": 1695,
+              "begin": 261,
               "children": [
                 {
                   "kind": "nt",
                   "name": "exportDef",
-                  "begin": 1695,
+                  "begin": 261,
                   "children": [
                     {
                       "kind": "t",
-                      "token": "'('",
+                      "token": "TOKEN__28_",
                       "text": "("
                     },
                     {
                       "kind": "t",
-                      "token": "'export'",
+                      "token": "TOKEN_export",
                       "text": "export"
                     },
                     {
@@ -3594,27 +3602,27 @@
                     {
                       "kind": "nt",
                       "name": "exportDesc",
-                      "begin": 1716,
+                      "begin": 264,
                       "children": [
                         {
                           "kind": "t",
-                          "token": "'('",
+                          "token": "TOKEN__28_",
                           "text": "("
                         },
                         {
                           "kind": "t",
-                          "token": "'func'",
+                          "token": "TOKEN_func",
                           "text": "func"
                         },
                         {
                           "kind": "nt",
                           "name": "index",
-                          "begin": 1722,
+                          "begin": 266,
                           "children": [
                             {
                               "kind": "nt",
                               "name": "id",
-                              "begin": 1722,
+                              "begin": 266,
                               "children": [
                                 {
                                   "kind": "t",
@@ -3622,41 +3630,41 @@
                                   "text": "$table_grow"
                                 }
                               ],
-                              "end": 1733
+                              "end": 267
                             }
                           ],
-                          "end": 1733
+                          "end": 267
                         },
                         {
                           "kind": "t",
-                          "token": "')'",
+                          "token": "TOKEN__29_",
                           "text": ")"
                         }
                       ],
-                      "end": 1734
+                      "end": 268
                     },
                     {
                       "kind": "t",
-                      "token": "')'",
+                      "token": "TOKEN__29_",
                       "text": ")"
                     }
                   ],
-                  "end": 1735
+                  "end": 269
                 }
               ],
-              "end": 1735
+              "end": 269
             },
             {
               "kind": "t",
-              "token": "')'",
+              "token": "TOKEN__29_",
               "text": ")"
             }
           ],
-          "end": 1737
+          "end": 270
         }
       ],
-      "end": 1737
+      "end": 270
     }
   ],
-  "end": 1737
+  "end": 270
 }

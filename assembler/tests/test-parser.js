@@ -8,8 +8,25 @@
 const fs = require('fs');
 const path = require('path');
 
-// Load the WAT parser
-const WAT = require('../WAT.js');
+// Load the canonical generated parser, with a legacy fallback for older checkouts.
+function loadParser() {
+  for (const relPath of ['../wat-parser.js', '../WAT.js']) {
+    try {
+      return require(relPath);
+    } catch (err) {
+      if (err && err.code !== 'MODULE_NOT_FOUND') throw err;
+    }
+  }
+  throw new Error('Unable to load WAT parser from ../wat-parser.js or ../WAT.js');
+}
+
+const WAT = loadParser();
+
+function runParser(parser) {
+  if (typeof parser.parse === 'function') return parser.parse();
+  if (typeof parser.parse_wat === 'function') return parser.parse_wat();
+  throw new Error('Parser exposes neither parse() nor parse_wat()');
+}
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const EXPECTED_AST_DIR = path.join(__dirname, 'expected-ast');
@@ -65,15 +82,34 @@ function createAstBuilder(source) {
         node.end = end;
       }
     },
-    terminal: (token, begin, end) => {
+    abortNonterminal: () => {
+      const node = stack.pop();
+      if (node && stack.length > 0) {
+        const parent = stack[stack.length - 1];
+        const idx = parent.children.lastIndexOf(node);
+        if (idx !== -1) parent.children.splice(idx, 1);
+      }
+    },
+    terminal: (token, textOrBegin, end) => {
       if (stack.length === 0) return;
+      const text = typeof textOrBegin === 'string'
+        ? textOrBegin
+        : source.slice(textOrBegin, end);
       stack[stack.length - 1].children.push({
         kind: 't',
         token,
-        text: source.slice(begin, end)
+        text
       });
     },
-    whitespace: () => {}
+    whitespace: () => {},
+    checkpoint: () => stack.map(node => ({ node, len: node.children.length })),
+    restore: (mark) => {
+      if (!Array.isArray(mark)) return;
+      stack.length = mark.length;
+      for (const { node, len } of mark) {
+        node.children.length = len;
+      }
+    }
   };
 
   return {
@@ -179,11 +215,10 @@ for (const testCase of TEST_CASES) {
           whitespace: () => {}
         };
     
-    // Parse the file
-    const parser = new WAT(source, eventHandler);
-    
     try {
-      parser.parse_wat();
+      // Parse the file
+      const parser = new WAT(source, eventHandler);
+      runParser(parser);
       
       if (testCase.shouldPass) {
         if (ENABLE_ROUNDTRIP) {
@@ -193,7 +228,7 @@ for (const testCase of TEST_CASES) {
           try {
             const roundtripBuilder = createAstBuilder(regeneratedWat);
             const roundtripParser = new WAT(regeneratedWat, roundtripBuilder.handler);
-            roundtripParser.parse_wat();
+            runParser(roundtripParser);
 
             const originalNorm = JSON.stringify(normalizeAst(ast));
             const regeneratedNorm = JSON.stringify(normalizeAst(roundtripBuilder.getAst()));
