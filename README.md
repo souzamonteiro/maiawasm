@@ -129,7 +129,7 @@ Internal fixtures suite:
 node assembler/tests/run-tests.js
 ```
 
-Static linker regression matrix (local sections + available multi-module fixtures):
+Static linker regression matrix (local sections + built-in multi-module fixtures):
 
 ```bash
 npm run test:linker:static

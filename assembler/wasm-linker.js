@@ -1470,6 +1470,16 @@ class WasmLinker {
       return (outputTableImport ? 1 : 0) + localIdx;
     };
 
+    const localGlobalMap = new Map();
+    let localGlobalCounter = 0;
+    for (const mod of linkResult.modules) {
+      const importedGlobalCount = mod.importedGlobalCount;
+      for (let i = 0; i < (mod.globalSection || []).length; i++) {
+        const oldGlobalIdx = importedGlobalCount + i;
+        localGlobalMap.set(`${mod.id}:${oldGlobalIdx}`, localGlobalCounter++);
+      }
+    }
+
     const globalResolveMemo = new Map();
     const globalResolveStack = new Set();
 
@@ -1548,16 +1558,6 @@ class WasmLinker {
             throw new Error('Static mode currently supports a single external imported global signature across all modules');
           }
         }
-      }
-    }
-
-    const localGlobalMap = new Map();
-    let localGlobalCounter = 0;
-    for (const mod of linkResult.modules) {
-      const importedGlobalCount = mod.importedGlobalCount;
-      for (let i = 0; i < (mod.globalSection || []).length; i++) {
-        const oldGlobalIdx = importedGlobalCount + i;
-        localGlobalMap.set(`${mod.id}:${oldGlobalIdx}`, localGlobalCounter++);
       }
     }
 
