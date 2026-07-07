@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { WatAssembler } = require('../wat-assembler.js');
+const WatAssembler = require('../wat-assembler.js');
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 const EXPECTED_DIR = path.join(__dirname, 'expected');
@@ -16,6 +16,15 @@ if (!fs.existsSync(EXPECTED_DIR)) {
 
 // Files that should FAIL assembly (error test files)
 const SHOULD_FAIL = ['10-errors.wat'];
+const ERROR_MARKER = 'This file should fail to compile';
+
+function sanitizeWat(source) {
+  return source
+    .split('\n')
+    .map(line => line.replace(/;;.*$/, ''))
+    .join('\n')
+    .trim();
+}
 
 const watFiles = fs.readdirSync(FIXTURES_DIR)
   .filter(f => f.endsWith('.wat'));
@@ -33,7 +42,7 @@ for (const watFile of watFiles) {
   process.stdout.write(`  ${watFile} -> `);
   
   try {
-    const source = fs.readFileSync(watPath, 'utf8');
+    const source = sanitizeWat(fs.readFileSync(watPath, 'utf8'));
     
     if (SHOULD_FAIL.includes(watFile)) {
       // This file should FAIL
@@ -48,7 +57,7 @@ for (const watFile of watFiles) {
         // Success! It failed as expected
         // Save a marker that this file should fail
         const errorPath = path.join(EXPECTED_DIR, baseName + '.error');
-        fs.writeFileSync(errorPath, 'expected failure');
+        fs.writeFileSync(errorPath, ERROR_MARKER);
         console.log('✓ created .error (correctly failed)');
         successCount++;
       }
@@ -64,7 +73,7 @@ for (const watFile of watFiles) {
     if (SHOULD_FAIL.includes(watFile)) {
       // This file should fail and it did
       const errorPath = path.join(EXPECTED_DIR, baseName + '.error');
-      fs.writeFileSync(errorPath, 'expected failure');
+      fs.writeFileSync(errorPath, ERROR_MARKER);
       console.log('✓ created .error (correctly failed)');
       successCount++;
     } else {
