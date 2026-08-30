@@ -5,6 +5,7 @@ class Lexer {
     this.tokens = [];
     this.charClassDepth = 0;
     this.templateDepth = 0;
+    this.templateBraceDepthStack = [];
     this.tokenPatterns = [    { type: 'TOKEN__28_', regex: /^\(/ },    { type: 'TOKEN_module', regex: /^module/ },    { type: 'TOKEN__29_', regex: /^\)/ },    { type: 'TOKEN_type', regex: /^type/ },    { type: 'TOKEN_rec', regex: /^rec/ },    { type: 'TOKEN_sub', regex: /^sub/ },    { type: 'TOKEN_final', regex: /^final/ },    { type: 'TOKEN_func', regex: /^func/ },    { type: 'TOKEN_struct', regex: /^struct/ },    { type: 'TOKEN_array', regex: /^array/ },    { type: 'TOKEN_field', regex: /^field/ },    { type: 'TOKEN_mut', regex: /^mut/ },    { type: 'TOKEN_i8', regex: /^i8/ },    { type: 'TOKEN_i16', regex: /^i16/ },    { type: 'TOKEN_tag', regex: /^tag/ },    { type: 'TOKEN_global', regex: /^global/ },    { type: 'TOKEN_memory', regex: /^memory/ },    { type: 'TOKEN_table', regex: /^table/ },    { type: 'TOKEN_local', regex: /^local/ },    { type: 'TOKEN_import', regex: /^import/ },    { type: 'TOKEN_export', regex: /^export/ },    { type: 'TOKEN_start', regex: /^start/ },    { type: 'TOKEN_data', regex: /^data/ },    { type: 'TOKEN_elem', regex: /^elem/ },    { type: 'TOKEN_declare', regex: /^declare/ },    { type: 'TOKEN_item', regex: /^item/ },    { type: 'TOKEN_offset', regex: /^offset/ },    { type: 'TOKEN_block', regex: /^block/ },    { type: 'TOKEN_loop', regex: /^loop/ },    { type: 'TOKEN_if', regex: /^if/ },    { type: 'TOKEN_then', regex: /^then/ },    { type: 'TOKEN_else', regex: /^else/ },    { type: 'TOKEN_try_5F_table', regex: /^try_table/ },    { type: 'TOKEN_catch', regex: /^catch/ },    { type: 'TOKEN_catch_5F_ref', regex: /^catch_ref/ },    { type: 'TOKEN_catch_5F_all', regex: /^catch_all/ },    { type: 'TOKEN_catch_5F_all_5F_ref', regex: /^catch_all_ref/ },    { type: 'TOKEN_end', regex: /^end/ },    { type: 'TOKEN_nop', regex: /^nop/ },    { type: 'TOKEN_unreachable', regex: /^unreachable/ },    { type: 'TOKEN_drop', regex: /^drop/ },    { type: 'TOKEN_return', regex: /^return/ },    { type: 'TOKEN_throw_5F_ref', regex: /^throw_ref/ },    { type: 'TOKEN_select', regex: /^select/ },    { type: 'TOKEN_local_2E_get', regex: /^local\.get/ },    { type: 'TOKEN_local_2E_set', regex: /^local\.set/ },    { type: 'TOKEN_local_2E_tee', regex: /^local\.tee/ },    { type: 'TOKEN_global_2E_get', regex: /^global\.get/ },    { type: 'TOKEN_global_2E_set', regex: /^global\.set/ },    { type: 'TOKEN_table_2E_get', regex: /^table\.get/ },    { type: 'TOKEN_table_2E_set', regex: /^table\.set/ },    { type: 'TOKEN_table_2E_size', regex: /^table\.size/ },    { type: 'TOKEN_table_2E_grow', regex: /^table\.grow/ },    { type: 'TOKEN_table_2E_fill', regex: /^table\.fill/ },    { type: 'TOKEN_table_2E_copy', regex: /^table\.copy/ },    { type: 'TOKEN_table_2E_init', regex: /^table\.init/ },    { type: 'TOKEN_elem_2E_drop', regex: /^elem\.drop/ },    { type: 'TOKEN_memory_2E_size', regex: /^memory\.size/ },    { type: 'TOKEN_memory_2E_grow', regex: /^memory\.grow/ },    { type: 'TOKEN_memory_2E_fill', regex: /^memory\.fill/ },    { type: 'TOKEN_memory_2E_copy', regex: /^memory\.copy/ },    { type: 'TOKEN_memory_2E_init', regex: /^memory\.init/ },    { type: 'TOKEN_data_2E_drop', regex: /^data\.drop/ },    { type: 'TOKEN_ref_2E_null', regex: /^ref\.null/ },    { type: 'TOKEN_ref_2E_func', regex: /^ref\.func/ },    { type: 'TOKEN_ref_2E_is_5F_null', regex: /^ref\.is_null/ },    { type: 'TOKEN_ref_2E_as_5F_non_5F_null', regex: /^ref\.as_non_null/ },    { type: 'TOKEN_ref_2E_eq', regex: /^ref\.eq/ },    { type: 'TOKEN_ref_2E_test', regex: /^ref\.test/ },    { type: 'TOKEN_ref_2E_cast', regex: /^ref\.cast/ },    { type: 'TOKEN_struct_2E_new', regex: /^struct\.new/ },    { type: 'TOKEN_struct_2E_new_5F_default', regex: /^struct\.new_default/ },    { type: 'TOKEN_struct_2E_get', regex: /^struct\.get/ },    { type: 'TOKEN_struct_2E_get_5F_s', regex: /^struct\.get_s/ },    { type: 'TOKEN_struct_2E_get_5F_u', regex: /^struct\.get_u/ },    { type: 'TOKEN_struct_2E_set', regex: /^struct\.set/ },    { type: 'TOKEN_array_2E_new', regex: /^array\.new/ },    { type: 'TOKEN_array_2E_new_5F_default', regex: /^array\.new_default/ },    { type: 'TOKEN_array_2E_new_5F_fixed', regex: /^array\.new_fixed/ },    { type: 'TOKEN_array_2E_new_5F_data', regex: /^array\.new_data/ },    { type: 'TOKEN_array_2E_new_5F_elem', regex: /^array\.new_elem/ },    { type: 'TOKEN_array_2E_get', regex: /^array\.get/ },    { type: 'TOKEN_array_2E_get_5F_s', regex: /^array\.get_s/ },    { type: 'TOKEN_array_2E_get_5F_u', regex: /^array\.get_u/ },    { type: 'TOKEN_array_2E_set', regex: /^array\.set/ },    { type: 'TOKEN_array_2E_len', regex: /^array\.len/ },    { type: 'TOKEN_array_2E_fill', regex: /^array\.fill/ },    { type: 'TOKEN_array_2E_copy', regex: /^array\.copy/ },    { type: 'TOKEN_array_2E_init_5F_data', regex: /^array\.init_data/ },    { type: 'TOKEN_array_2E_init_5F_elem', regex: /^array\.init_elem/ },    { type: 'TOKEN_ref_2E_i31', regex: /^ref\.i31/ },    { type: 'TOKEN_i31_2E_get_5F_s', regex: /^i31\.get_s/ },    { type: 'TOKEN_i31_2E_get_5F_u', regex: /^i31\.get_u/ },    { type: 'TOKEN_any_2E_convert_5F_extern', regex: /^any\.convert_extern/ },    { type: 'TOKEN_extern_2E_convert_5F_any', regex: /^extern\.convert_any/ },    { type: 'TOKEN_call', regex: /^call/ },    { type: 'TOKEN_call_5F_ref', regex: /^call_ref/ },    { type: 'TOKEN_call_5F_indirect', regex: /^call_indirect/ },    { type: 'TOKEN_return_5F_call', regex: /^return_call/ },    { type: 'TOKEN_return_5F_call_5F_ref', regex: /^return_call_ref/ },    { type: 'TOKEN_return_5F_call_5F_indirect', regex: /^return_call_indirect/ },    { type: 'TOKEN_br', regex: /^br/ },    { type: 'TOKEN_br_5F_if', regex: /^br_if/ },    { type: 'TOKEN_br_5F_table', regex: /^br_table/ },    { type: 'TOKEN_br_5F_on_5F_null', regex: /^br_on_null/ },    { type: 'TOKEN_br_5F_on_5F_non_5F_null', regex: /^br_on_non_null/ },    { type: 'TOKEN_br_5F_on_5F_cast', regex: /^br_on_cast/ },    { type: 'TOKEN_br_5F_on_5F_cast_5F_fail', regex: /^br_on_cast_fail/ },    { type: 'TOKEN_throw', regex: /^throw/ },    { type: 'TOKEN_v128_2E_const', regex: /^v128\.const/ },    { type: 'TOKEN_i8x16_2E_shuffle', regex: /^i8x16\.shuffle/ },    { type: 'TOKEN_i8x16', regex: /^i8x16/ },    { type: 'TOKEN_i16x8', regex: /^i16x8/ },    { type: 'TOKEN_i32x4', regex: /^i32x4/ },    { type: 'TOKEN_i64x2', regex: /^i64x2/ },    { type: 'TOKEN_f32x4', regex: /^f32x4/ },    { type: 'TOKEN_f64x2', regex: /^f64x2/ },    { type: 'TOKEN_param', regex: /^param/ },    { type: 'TOKEN_result', regex: /^result/ },    { type: 'TOKEN_any', regex: /^any/ },    { type: 'TOKEN_eq', regex: /^eq/ },    { type: 'TOKEN_i31', regex: /^i31/ },    { type: 'TOKEN_none', regex: /^none/ },    { type: 'TOKEN_nofunc', regex: /^nofunc/ },    { type: 'TOKEN_exn', regex: /^exn/ },    { type: 'TOKEN_noexn', regex: /^noexn/ },    { type: 'TOKEN_extern', regex: /^extern/ },    { type: 'TOKEN_noextern', regex: /^noextern/ },    { type: 'TOKEN_funcref', regex: /^funcref/ },    { type: 'TOKEN_externref', regex: /^externref/ },    { type: 'TOKEN_exnref', regex: /^exnref/ },    { type: 'TOKEN_ref', regex: /^ref/ },    { type: 'TOKEN_null', regex: /^null/ },    { type: 'TOKEN_i32', regex: /^i32/ },    { type: 'TOKEN_i64', regex: /^i64/ },    { type: 'TOKEN_f32', regex: /^f32/ },    { type: 'TOKEN_f64', regex: /^f64/ },    { type: 'TOKEN_v128', regex: /^v128/ },    { type: 'TOKEN__5F_s', regex: /^_s/ },    { type: 'TOKEN__5F_u', regex: /^_u/ },    { type: 'TOKEN_offset_3D_', regex: /^offset=/ },    { type: 'TOKEN_align_3D_', regex: /^align=/ },    { type: 'skip', regex: /^(?:[\u0009\u000A\u000D\u0020]+|;;[^\n\r\u2028\u2029]*(?:\n|\r|\u2028|\u2029|$)|\(;[\s\S]*?;\))+/, skip: true },    { type: 'string', regex: /^"(?:(?:[\u0009]|[\u000a]|[\u000d]|[\u0020-\u0021]|[\u0023-\u005b]|[\u005d-\ud7ff]|[\ue000-\ufffd]|\\[\u0000-\ud7ff\ue000-\ufffd]))*"/ },    { type: 'nat', regex: /^(?:[0-9])+/ },    { type: 'float', regex: /^(?:(?:(?:\+|-))?(?:[0-9])+(?:\.(?:[0-9])+)(?:(?:(?:e|E)(?:(?:\+|-))?(?:[0-9])+))?|(?:(?:\+|-))?(?:[0-9])+(?:(?:e|E)(?:(?:\+|-))?(?:[0-9])+)|(?:(?:\+|-))?0x(?:[0-9A-Fa-f])+(?:(?:\.(?:[0-9A-Fa-f])+))?(?:(?:(?:p|P)(?:(?:\+|-))?(?:[0-9])+))?|(?:(?:\+|-))?inf|(?:(?:\+|-))?nan(?:(?::0x(?:[0-9A-Fa-f])+))?)/ },    { type: 'sign', regex: /^(?:\+|-)/ },    { type: 'identifier', regex: /^\$[A-Za-z_](?:[A-Za-z0-9_])*/ },    { type: 'dottedName', regex: /^[A-Za-z_](?:[A-Za-z0-9_])*(?:(?:\.[A-Za-z_](?:[A-Za-z0-9_])*))+/ },    ];
   }
 
@@ -38,11 +39,34 @@ class Lexer {
 
   enterTemplateSpan() {
     this.templateDepth++;
+    this.templateBraceDepthStack.push(0);
   }
 
   exitTemplateSpan() {
     if (this.templateDepth > 0) {
       this.templateDepth--;
+    }
+    if (this.templateBraceDepthStack.length > 0) {
+      this.templateBraceDepthStack.pop();
+    }
+  }
+
+  currentTemplateBraceDepth() {
+    return this.templateBraceDepthStack.length === 0
+      ? 0
+      : this.templateBraceDepthStack[this.templateBraceDepthStack.length - 1];
+  }
+
+  incrementTemplateBraceDepth() {
+    if (this.templateBraceDepthStack.length > 0) {
+      this.templateBraceDepthStack[this.templateBraceDepthStack.length - 1] += 1;
+    }
+  }
+
+  decrementTemplateBraceDepth() {
+    const index = this.templateBraceDepthStack.length - 1;
+    if (index >= 0 && this.templateBraceDepthStack[index] > 0) {
+      this.templateBraceDepthStack[index] -= 1;
     }
   }
   
@@ -57,9 +81,10 @@ class Lexer {
       );
 
       for (const pattern of this.tokenPatterns) {
-        // Template middle/tail tokens are context-sensitive and must only
-        // be considered while lexing inside an active template expression.
-        if ((pattern.type === 'TemplateMiddle' || pattern.type === 'TemplateTail') && this.templateDepth === 0) {
+        // Template spans are synthesized only when a closing brace ends the
+        // active interpolation. Their raw patterns must not consume ordinary
+        // braces from nested expressions.
+        if (pattern.type === 'TemplateMiddle' || pattern.type === 'TemplateTail') {
           continue;
         }
 
@@ -68,25 +93,42 @@ class Lexer {
 
         if (match && match.index === 0 && match[0].length > 0) {
           let effectivePattern = pattern;
+          let effectiveMatch = match;
           // When parsing template expressions, disambiguate closing brace as template span boundary.
-          if (this.templateDepth > 0 && pattern.type === 'TOKEN__7D_') {
+          if (this.templateDepth > 0
+            && pattern.type === 'TOKEN__7D_'
+            && this.currentTemplateBraceDepth() === 0) {
             if (this.isTemplateSpanPattern(this.position, 'TemplateMiddle')) {
-              effectivePattern = { ...pattern, type: 'TemplateMiddle' };
+              const templateMiddle = this.tokenPatterns.find((candidate) => candidate.type === 'TemplateMiddle');
+              const templateMatch = templateMiddle
+                ? this.input.substring(this.position).match(templateMiddle.regex)
+                : null;
+              if (templateMatch && templateMatch.index === 0 && templateMatch[0].length > 0) {
+                effectivePattern = templateMiddle;
+                effectiveMatch = templateMatch;
+              }
             } else if (this.isTemplateSpanPattern(this.position, 'TemplateTail')) {
-              effectivePattern = { ...pattern, type: 'TemplateTail' };
+              const templateTail = this.tokenPatterns.find((candidate) => candidate.type === 'TemplateTail');
+              const templateMatch = templateTail
+                ? this.input.substring(this.position).match(templateTail.regex)
+                : null;
+              if (templateMatch && templateMatch.index === 0 && templateMatch[0].length > 0) {
+                effectivePattern = templateTail;
+                effectiveMatch = templateMatch;
+              }
             }
           }
 
-          candidates.push({ pattern: effectivePattern, match });
+          candidates.push({ pattern: effectivePattern, match: effectiveMatch });
           if (!bestMatch
-              || match[0].length > bestMatch[0].length
-              || (match[0].length === bestMatch[0].length && effectivePattern.skip && !bestPattern.skip)
-              || (match[0].length === bestMatch[0].length
+              || effectiveMatch[0].length > bestMatch[0].length
+              || (effectiveMatch[0].length === bestMatch[0].length && effectivePattern.skip && !bestPattern.skip)
+              || (effectiveMatch[0].length === bestMatch[0].length
                   && bestPattern
                   && isGenericNameType(bestPattern.type)
                   && !isGenericNameType(effectivePattern.type))) {
             bestPattern = effectivePattern;
-            bestMatch = match;
+            bestMatch = effectiveMatch;
           }
         }
       }
@@ -141,6 +183,10 @@ class Lexer {
           this.charClassDepth++;
         } else if (bestPattern.type === 'TOKEN__5D_' && this.charClassDepth > 0) {
           this.charClassDepth--;
+        } else if (bestPattern.type === 'TOKEN__7B_' && this.templateDepth > 0) {
+          this.incrementTemplateBraceDepth();
+        } else if (bestPattern.type === 'TOKEN__7D_' && this.templateDepth > 0) {
+          this.decrementTemplateBraceDepth();
         } else if (bestPattern.type === 'TemplateHead') {
           this.enterTemplateSpan();
         } else if (bestPattern.type === 'TemplateTail') {
@@ -203,6 +249,30 @@ class Parser {
       return true;
     }
     return false;
+  }
+
+  consumeContextual(expectedType) {
+    const token = this.peek();
+    if (token && token.type === expectedType) {
+      return this.consume(expectedType);
+    }
+
+    const pattern = this.lexer.tokenPatterns.find((candidate) => candidate.type === expectedType);
+    const match = pattern && token ? token.value.match(pattern.regex) : null;
+    if (!match || match.index !== 0 || match[0].length !== token.value.length) {
+      this.errors.push({
+        expected: expectedType,
+        found: token ? token.type : 'EOF',
+        position: this.position
+      });
+      throw new Error('Expected contextual ' + expectedType + ', got ' + (token ? token.type : 'EOF'));
+    }
+
+    if (this.eventHandler && typeof this.eventHandler.terminal === 'function') {
+      this.eventHandler.terminal(token.type, token.value, this.position);
+    }
+    this.position++;
+    return token;
   }
 
   markEventState() {
@@ -4778,7 +4848,7 @@ class Parser {
     }
     let __ok = false;
     try {
-    this.consume('identifier');
+    this.consumeContextual('identifier');
 
       __ok = true;
     } finally {
