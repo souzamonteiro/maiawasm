@@ -5,6 +5,9 @@
 'use strict';
 
 const WATParser = require('./wat-parser-adapter.js');
+const { naturalAlignment } = require('./wasm-memory.js');
+const { encodeWatFloat } = require('./wasm-floats.js');
+const { decodeUTF8, decodeWatString: decodeString, quoteWatBytes } = require('./wasm-strings.js');
 
 // ============================================================================
 // ENCODING HELPERS
@@ -42,18 +45,6 @@ function encodeSLEB128(value) {
 // SECTION / TYPE ENCODING HELPERS
 // ============================================================================
 
-function encodeF32(v) {
-  const buf = Buffer.alloc(4);
-  buf.writeFloatLE(v, 0);
-  return buf;
-}
-
-function encodeF64(v) {
-  const buf = Buffer.alloc(8);
-  buf.writeDoubleLE(v, 0);
-  return buf;
-}
-
 function encodeUTF8(s) { return Buffer.from(s, 'utf8'); }
 function encodeVecU8(buf) { return Buffer.concat([encodeULEB128(buf.length), buf]); }
 function encodeSection(id, content) {
@@ -75,7 +66,7 @@ const PackedTypeCode = {
 };
 
 const HeapTypeCode = {
-  func: 0x70, extern: 0x6f, exn: 0x68, any: 0x6e, eq: 0x6d,
+  func: 0x70, extern: 0x6f, exn: 0x69, any: 0x6e, eq: 0x6d,
   i31: 0x6c, struct: 0x6b, array: 0x6a, none: 0x71, nofunc: 0x73,
   noexn: 0x74, noextern: 0x72, funcref: 0x70, externref: 0x6f, exnref: 0x69,
 };
@@ -171,7 +162,7 @@ const OPCODE_FB = {
   'array.get': 0x0b, 'array.get_s': 0x0c, 'array.get_u': 0x0d, 'array.set': 0x0e,
   'array.len': 0x0f, 'array.fill': 0x10, 'array.copy': 0x11,
   'array.init_data': 0x12, 'array.init_elem': 0x13,
-  'ref.test': 0x14, 'ref.cast': 0x15,
+  'ref.test': 0x14, 'ref.cast': 0x16,
   'br_on_cast': 0x18, 'br_on_cast_fail': 0x19,
   'any.convert_extern': 0x1a, 'extern.convert_any': 0x1b,
   'ref.i31': 0x1c, 'i31.get_s': 0x1d, 'i31.get_u': 0x1e,
@@ -318,32 +309,6 @@ function tResolveIdxNode(node, idMap) {
   return 0;
 }
 
-function decodeString(raw) {
-  const s = raw.slice(1, -1);
-  const bytes = [];
-  for (let i = 0; i < s.length; ) {
-    if (s[i] === '\\') {
-      const c = s[i + 1];
-      if (c === 'n') { bytes.push(0x0a); i += 2; }
-      else if (c === 't') { bytes.push(0x09); i += 2; }
-      else if (c === 'r') { bytes.push(0x0d); i += 2; }
-      else if (c === '"') { bytes.push(0x22); i += 2; }
-      else if (c === "'") { bytes.push(0x27); i += 2; }
-      else if (c === '\\') { bytes.push(0x5c); i += 2; }
-      else if (/[0-9a-fA-F]/.test(c) && i + 2 < s.length && /[0-9a-fA-F]/.test(s[i + 2])) {
-        bytes.push(parseInt(s[i + 1] + s[i + 2], 16)); i += 3;
-      } else { bytes.push(s.charCodeAt(i)); i++; }
-    } else {
-      // Handle multi-byte UTF-8 chars
-      const cp = s.codePointAt(i);
-      if (cp < 0x80) { bytes.push(cp); i++; }
-      else if (cp < 0x800) { bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f)); i++; }
-      else { bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); i++; }
-    }
-  }
-  return Buffer.from(bytes);
-}
-
 function parseNum(text) {
   if (!text) return 0;
   text = text.trim().replace(/_/g, '');
@@ -399,6 +364,21 @@ function buildSymbolTables(ctx) {
   if (!moduleNode) throw new Error('No module node in parse tree');
   const moduleFields = tChildrenOfType(moduleNode, 'moduleField');
 
+  let typeIndex = 0;
+  for (const mf of moduleFields) {
+    const inner = tChildren(mf)[0];
+    if (!inner) continue;
+    const defs = inner.type === 'recDef' ? tChildrenOfType(inner, 'typeDef') :
+      inner.type === 'typeDef' ? [inner] : [];
+    for (const def of defs) {
+      const name = tNameOf(def);
+      if (name) ctx.typeIds.set(name, typeIndex);
+      const rectype = tChild(def, 'rectype');
+      typeIndex += rectype && tFindFirst(rectype, 'TOKEN_rec') ?
+        tChildrenOfType(rectype, 'subtype').length : 1;
+    }
+  }
+
   // Pass 1: explicit type definitions establish canonical typeidx numbering.
   // This keeps `(type N)` references stable even when imports use inline
   // signatures before the explicit type declarations in source order.
@@ -406,13 +386,21 @@ function buildSymbolTables(ctx) {
     const inner = tChildren(mf)[0];
     if (!inner) continue;
     if (inner.type === 'typeDef') processTypeDef(ctx, inner);
+    if (inner.type === 'recDef') {
+      const start = ctx.types.length;
+      const entryStart = ctx.typeEntries.length;
+      for (const def of tChildrenOfType(inner, 'typeDef')) processTypeDef(ctx, def);
+      const entries = ctx.typeEntries.splice(entryStart);
+      if (entries.some(e => e.kind !== 'single')) throw new Error('Nested recursive type groups are not supported');
+      ctx.typeEntries.push({ kind: 'rec', subtypes: ctx.types.slice(start) });
+    }
   }
 
   // Pass 2: all remaining module fields.
   for (const mf of moduleFields) {
     const inner = tChildren(mf)[0];
     if (!inner) continue;
-    if (inner.type === 'typeDef') continue;
+    if (inner.type === 'typeDef' || inner.type === 'recDef') continue;
     if (inner.type === 'importDef') processImportDef(ctx, inner);
     else if (inner.type === 'funcDef') processFuncDef(ctx, inner);
     else if (inner.type === 'globalDef') processGlobalDef(ctx, inner);
@@ -438,10 +426,25 @@ function buildSymbolTables(ctx) {
 
 function parseValueType(vtNode) {
   const terms = tAllTerminals(vtNode);
+  if (terms.some(t => t.text === 'ref')) return terms.map(t => t.text).join(' ');
   for (const t of terms) {
     if (ValTypeCode[t.text] !== undefined) return t.text;
   }
-  return 'i32';
+  throw new Error(`Unknown value type ${terms.map(t => t.text).join(' ')}`);
+}
+
+function encodeValueType(type, ctx) {
+  if (ValTypeCode[type] !== undefined) return Buffer.from([ValTypeCode[type]]);
+  const match = /^\(\s*ref\s+(null\s+)?([^\s()]+)\s*\)$/.exec(type);
+  if (!match) throw new Error(`Unknown value type ${type}`);
+  return Buffer.concat([Buffer.from([match[1] ? 0x63 : 0x64]), encodeHeapType(match[2], ctx)]);
+}
+
+function encodeHeapType(heap, ctx) {
+  if (HeapTypeCode[heap] !== undefined) return Buffer.from([HeapTypeCode[heap]]);
+  const index = heap.startsWith('$') ? ctx.typeIds.get(heap) : /^\d+$/.test(heap) ? Number(heap) : undefined;
+  if (!Number.isInteger(index) || index < 0 || index > 0xffffffff) throw new Error(`Unknown heap type ${heap}`);
+  return encodeSLEB33Index(index);
 }
 
 function parseFuncTypeSig(funcTypeNode) {
@@ -465,14 +468,14 @@ function parseStorageType(stNode) {
     if (terms.includes('i16')) return { kind: 'packed', code: PackedTypeCode.i16 };
   }
   const vt = tFindFirst(stNode, 'valueType');
-  if (vt) return { kind: 'val', code: ValTypeCode[parseValueType(vt)] || 0x7f };
-  return { kind: 'val', code: 0x7f };
+  if (vt) return { kind: 'val', value: parseValueType(vt) };
+  throw new Error('Missing field storage type');
 }
 
 function parseFieldType(fieldDeclNode) {
-  const st = tChild(fieldDeclNode, 'storagetype');
+  const st = tFindFirst(fieldDeclNode, 'storagetype');
   const storage = parseStorageType(st);
-  const mut = !!tFindFirst(fieldDeclNode, 'mutField');
+  const mut = !!tFindFirst(fieldDeclNode, 'TOKEN_mut');
   return { storage, mutable: mut };
 }
 
@@ -488,8 +491,8 @@ function parseCompTypeDesc(compTypeNode) {
 
   const at = tChild(compTypeNode, 'arrayType');
   if (at) {
-    const fd = tChild(at, 'fieldDecl');
-    const field = fd ? parseFieldType(fd) : { storage: { kind: 'val', code: 0x7f }, mutable: false };
+    const fd = tChild(at, 'fieldDecl') || tChild(at, 'fieldType');
+    const field = parseFieldType(fd);
     return { kind: 'array', field };
   }
 
@@ -503,8 +506,11 @@ function parseSubtypeDesc(ctx, subtypeNode) {
   // an explicit `sub` keyword and should use the compact final encoding.
   const isFinal = hasSub ? hasFinal : true;
   const supertypes = tChildrenOfType(subtypeNode, 'supertype').map((st) => {
-    const tu = tFindFirst(st, 'typeuse') || st;
-    return resolveTypeUse(ctx, tu);
+    const index = tFindFirst(st, 'typeidx');
+    if (!index) throw new Error('Supertype requires a type index');
+    const name = tAllTerminals(index).find(t => t.text.startsWith('$'));
+    if (name && !ctx.typeIds.has(name.text)) throw new Error(`Unknown supertype ${name.text}`);
+    return tResolveIdxNode(index, ctx.typeIds);
   });
   const comp = tChild(subtypeNode, 'comptype');
   const desc = comp ? parseCompTypeDesc(comp) : { kind: 'func', params: [], results: [] };
@@ -597,35 +603,36 @@ function processTypeDef(ctx, node) {
 
 function processImportDef(ctx, node) {
   const strTerms = tChildren(node).filter(c => c.type === 'string');
-  const modName = strTerms[0] ? strTerms[0].text.slice(1, -1) : '';
-  const fieldName = strTerms[1] ? strTerms[1].text.slice(1, -1) : '';
+  const modName = decodeUTF8(decodeString(strTerms[0].text), 'import module');
+  const fieldName = decodeUTF8(decodeString(strTerms[1].text), 'import name');
   const descNode = tChild(node, 'importDesc');
   if (!descNode) return;
-  const kwds = tAllTerminals(descNode).map(t => t.text);
+  const kind = tAllTerminals(descNode).map(t => t.text)
+    .find(text => ['func', 'table', 'memory', 'global', 'tag'].includes(text));
   const importedId = tNameOf(descNode) || tNameOf(node);
 
-  if (kwds.includes('func')) {
+  if (kind === 'func') {
     const idx = ctx.funcs.length;
     if (importedId) ctx.funcIds.set(importedId, idx);
     const typeIdx = resolveTypeUse(ctx, tChild(descNode, 'typeuse'));
     ctx.funcs.push({ typeIdx, imported: true });
     ctx.imports.push({ module: modName, name: fieldName, kind: 'func', idx: typeIdx });
-  } else if (kwds.includes('table')) {
+  } else if (kind === 'table') {
     const idx = ctx.tables.length;
     if (importedId) ctx.tableIds.set(importedId, idx);
     ctx.tables.push({ imported: true, node: descNode });
     ctx.imports.push({ module: modName, name: fieldName, kind: 'table', node: descNode });
-  } else if (kwds.includes('memory')) {
+  } else if (kind === 'memory') {
     const idx = ctx.mems.length;
     if (importedId) ctx.memIds.set(importedId, idx);
     ctx.mems.push({ imported: true, node: descNode });
     ctx.imports.push({ module: modName, name: fieldName, kind: 'memory', node: descNode });
-  } else if (kwds.includes('global')) {
+  } else if (kind === 'global') {
     const idx = ctx.globals.length;
     if (importedId) ctx.globalIds.set(importedId, idx);
     ctx.globals.push({ imported: true });
     ctx.imports.push({ module: modName, name: fieldName, kind: 'global', node: descNode });
-  } else if (kwds.includes('tag')) {
+  } else if (kind === 'tag') {
     const idx = ctx.tags.length;
     if (importedId) ctx.tagIds.set(importedId, idx);
     ctx.tags.push({ imported: true });
@@ -678,7 +685,7 @@ function processTagDef(ctx, node) {
 
 function processExportDef(ctx, node) {
   const strTerms = tChildren(node).filter(c => c.type === 'string');
-  const name = strTerms[0] ? strTerms[0].text.slice(1, -1) : '';
+  const name = decodeUTF8(decodeString(strTerms[0].text), 'export name');
   const descNode = tChild(node, 'exportDesc');
   if (!descNode) return;
   const kwds = tAllTerminals(descNode).map(t => t.text);
@@ -740,9 +747,9 @@ function genTypeSection(ctx) {
       return Buffer.concat([
         Buffer.from([0x60]),
         encodeULEB128(params.length),
-        ...params.map(p => Buffer.from([ValTypeCode[p] || 0x7f])),
+        ...params.map(p => encodeValueType(p, ctx)),
         encodeULEB128(results.length),
-        ...results.map(r => Buffer.from([ValTypeCode[r] || 0x7f])),
+        ...results.map(r => encodeValueType(r, ctx)),
       ]);
     }
 
@@ -751,16 +758,20 @@ function genTypeSection(ctx) {
       return Buffer.concat([
         Buffer.from([0x5f]),
         encodeULEB128(fields.length),
-        ...fields.flatMap(f => [Buffer.from([f.storage.code]), Buffer.from([f.mutable ? 1 : 0])]),
+        ...fields.flatMap(f => [emitStorage(f.storage), Buffer.from([f.mutable ? 1 : 0])]),
       ]);
     }
 
     if (desc.kind === 'array') {
-      const f = desc.field || { storage: { code: 0x7f }, mutable: false };
-      return Buffer.concat([Buffer.from([0x5e, f.storage.code, f.mutable ? 1 : 0])]);
+      const f = desc.field;
+      return Buffer.concat([Buffer.from([0x5e]), emitStorage(f.storage), Buffer.from([f.mutable ? 1 : 0])]);
     }
 
-    return Buffer.concat([Buffer.from([0x60]), encodeULEB128(0), encodeULEB128(0)]);
+    throw new Error(`Unknown composite type ${desc.kind}`);
+  }
+
+  function emitStorage(storage) {
+    return storage.kind === 'packed' ? Buffer.from([storage.code]) : encodeValueType(storage.value, ctx);
   }
 
   function emitSubtype(desc) {
@@ -792,26 +803,24 @@ function genTypeSection(ctx) {
   return encodeSection(0x01, Buffer.concat(bufs));
 }
 
-function emitTableType(node) {
+function emitTableType(node, ctx) {
   const rt = tFindFirst(node, 'reftype');
-  const rtTerms = rt ? tAllTerminals(rt).map(t => t.text) : [];
-  let rtCode = 0x70;
-  if (rtTerms.includes('externref') || rtTerms.includes('extern')) rtCode = 0x6f;
-  else if (rtTerms.includes('exnref') || rtTerms.includes('exn')) rtCode = 0x69;
   const limBuf = emitLimits(tFindFirst(node, 'limits'));
-  return Buffer.concat([Buffer.from([rtCode]), limBuf]);
+  return Buffer.concat([encodeValueType(parseValueType(rt), ctx), limBuf]);
 }
 
 function emitMemType(node) {
-  return emitLimits(tFindFirst(node, 'limits'));
+  const limits = emitLimits(tFindFirst(node, 'limits'));
+  const terms = tAllTerminals(tFindFirst(node, 'limits')).filter(t => t.type === 'nat');
+  if (terms.some(t => Number(t.text) > 65536)) throw new Error('Memory32 limits exceed 65536 pages');
+  return limits;
 }
 
-function emitGlobalTypeBuf(node) {
+function emitGlobalTypeBuf(node, ctx) {
   const gtNode = tChild(node, 'globalType') || node;
   const mut = !!tFindFirst(gtNode, 'TOKEN_mut');
   const vt = tFindFirst(gtNode, 'valueType');
-  const code = vt ? (ValTypeCode[parseValueType(vt)] || 0x7f) : 0x7f;
-  return Buffer.from([code, mut ? 0x01 : 0x00]);
+  return Buffer.concat([encodeValueType(parseValueType(vt), ctx), Buffer.from([mut ? 0x01 : 0x00])]);
 }
 
 function emitLimits(limNode) {
@@ -819,6 +828,10 @@ function emitLimits(limNode) {
   const nats = tAllTerminals(limNode).filter(t => t.type === 'nat' && /^\d/.test(t.text));
   const min = nats[0] ? parseInt(nats[0].text, 10) : 0;
   const max = nats[1] ? parseInt(nats[1].text, 10) : null;
+  if (![min, ...(max === null ? [] : [max])].every(n => Number.isInteger(n) && n >= 0 && n <= 0xffffffff)) {
+    throw new Error('Invalid memory32/table32 limits');
+  }
+  if (max !== null && max < min) throw new Error('Invalid limits: maximum is below minimum');
   if (max !== null) return Buffer.concat([Buffer.from([0x01]), encodeULEB128(min), encodeULEB128(max)]);
   return Buffer.concat([Buffer.from([0x00]), encodeULEB128(min)]);
 }
@@ -834,13 +847,13 @@ function genImportSection(ctx) {
       bufs.push(encodeULEB128(imp.idx));
     } else if (imp.kind === 'table') {
       bufs.push(Buffer.from([0x01]));
-      bufs.push(emitTableType(imp.node));
+      bufs.push(emitTableType(imp.node, ctx));
     } else if (imp.kind === 'memory') {
       bufs.push(Buffer.from([0x02]));
       bufs.push(emitMemType(imp.node));
     } else if (imp.kind === 'global') {
       bufs.push(Buffer.from([0x03]));
-      bufs.push(emitGlobalTypeBuf(imp.node));
+      bufs.push(emitGlobalTypeBuf(imp.node, ctx));
     } else if (imp.kind === 'tag') {
       bufs.push(Buffer.from([0x04, 0x00]));
       bufs.push(encodeULEB128(imp.idx || 0));
@@ -861,7 +874,7 @@ function genTableSection(ctx) {
   const defs = ctx.tables.filter(t => !t.imported);
   if (!defs.length) return null;
   const bufs = [encodeULEB128(defs.length)];
-  for (const t of defs) bufs.push(emitTableType(t.node));
+  for (const t of defs) bufs.push(emitTableType(t.node, ctx));
   return encodeSection(0x04, Buffer.concat(bufs));
 }
 
@@ -878,11 +891,7 @@ function genGlobalSection(ctx) {
   const bufs = [encodeULEB128(ctx.globalDefs.length)];
   for (let i = 0; i < ctx.globalDefs.length; i++) {
     const gd = ctx.globalDefs[i];
-    const g = ctx.globals[ctx.funcs.filter(f => f.imported).length + i] || ctx.globals[i];
-    const gt = tChild(gd, 'globalType');
-    const mut = gt ? !!tFindFirst(gt, 'TOKEN_mut') : false;
-    const vt = tFindFirst(gt, 'valueType');
-    bufs.push(Buffer.from([vt ? (ValTypeCode[parseValueType(vt)] || 0x7f) : 0x7f, mut ? 1 : 0]));
+    bufs.push(emitGlobalTypeBuf(gd, ctx));
     const exprNode = tChild(gd, 'expr');
     bufs.push(emitExprBuf(exprNode, ctx, null));
     bufs.push(Buffer.from([0x0b]));
@@ -918,21 +927,18 @@ function genTagSection(ctx) {
   return encodeSection(0x0d, Buffer.concat(bufs));
 }
 
-function emitElemTypeByte(node) {
+function emitElemTypeByte(node, ctx) {
   const rt = tFindFirst(node, 'reftype') || node;
-  const terms = tAllTerminals(rt).map(t => t.text);
-  if (terms.includes('externref') || terms.includes('extern')) return Buffer.from([0x6f]);
-  if (terms.includes('exnref') || terms.includes('exn')) return Buffer.from([0x69]);
-  return Buffer.from([0x70]);
+  return encodeValueType(parseValueType(rt), ctx);
 }
 
 function genElementSection(ctx) {
   if (!ctx.elems.length) return null;
   const bufs = [encodeULEB128(ctx.elems.length)];
   for (const elem of ctx.elems) {
-    const allTerms = tAllTerminals(elem).map(t => t.text);
-    const isFuncForm = allTerms.includes('func');
     const elemList = tChild(elem, 'elemList') || elem;
+    const allTerms = tAllTerminals(elem).map(t => t.text);
+    const isFuncForm = tAllTerminals(elemList)[0].text === 'func';
     const hasDeclare = allTerms.includes('declare');
     const tableUse = tChild(elem, 'tableUse');
     const hasTableUse = !!tableUse;
@@ -962,6 +968,8 @@ function genElementSection(ctx) {
       for (const fi of funcIdxNodes) bufs.push(encodeULEB128(tResolveIdxNode(fi, ctx.funcIds)));
     } else {
       // flags for expr element segments: 4(active0),5(passive),6(active tableidx),7(declare)
+      const refType = emitElemTypeByte(elemList, ctx);
+      const implicitFuncRef = refType.length === 1 && refType[0] === 0x70;
       if (hasDeclare) {
         bufs.push(Buffer.from([0x07]));
       } else if (hasTableUse) {
@@ -969,19 +977,26 @@ function genElementSection(ctx) {
         bufs.push(encodeULEB128(tableIdx));
         bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
         bufs.push(Buffer.from([0x0b]));
-      } else if (hasOffset) {
+      } else if (hasOffset && implicitFuncRef) {
         bufs.push(Buffer.from([0x04]));
+        bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
+        bufs.push(Buffer.from([0x0b]));
+      } else if (hasOffset) {
+        bufs.push(Buffer.from([0x06, 0x00]));
         bufs.push(emitExprBuf(tChild(offsetNode, 'expr') || offsetNode, ctx, null));
         bufs.push(Buffer.from([0x0b]));
       } else {
         bufs.push(Buffer.from([0x05]));
       }
 
-      bufs.push(emitElemTypeByte(elemList));
+      if (hasDeclare || hasTableUse || !hasOffset || !implicitFuncRef) {
+        bufs.push(refType);
+      }
       const exprs = tChildrenOfType(elemList, 'elemExpr');
       bufs.push(encodeULEB128(exprs.length));
       for (const ex of exprs) {
-        bufs.push(emitExprBuf(tChild(ex, 'expr') || ex, ctx, null));
+        const expr = tChild(ex, 'expr');
+        bufs.push(expr ? emitExprBuf(expr, ctx, null) : emitInstrBuf(tChild(ex, 'instr'), ctx, null));
         bufs.push(Buffer.from([0x0b]));
       }
     }
@@ -1065,7 +1080,7 @@ function emitFuncBody(funcNode, ctx, defIndex) {
   }
   const localBuf = Buffer.concat([
     encodeULEB128(groups.length),
-    ...groups.flatMap(g => [encodeULEB128(g.count), Buffer.from([ValTypeCode[g.type] || 0x7f])]),
+    ...groups.flatMap(g => [encodeULEB128(g.count), encodeValueType(g.type, ctx)]),
   ]);
   const exprNode = tChild(funcNode, 'expr');
   const instrBuf = emitExprBuf(exprNode, ctx, localCtx);
@@ -1188,18 +1203,18 @@ function emitTryTable(node, ctx, localCtx) {
 
     if (isCatchAllRef) {
       parts.push(Buffer.from([0x03]));
-      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
+      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'labelidx'), localCtx)));
       continue;
     }
     if (isCatchAll) {
       parts.push(Buffer.from([0x02]));
-      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
+      parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'labelidx'), localCtx)));
       continue;
     }
 
     parts.push(Buffer.from([isCatchRef ? 0x01 : 0x00]));
-    parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'label'), nestedCtx)));
     parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'tagidx'), ctx.tagIds)));
+    parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(cc, 'labelidx'), localCtx)));
   }
 
   for (const instr of bodyInstr) parts.push(emitInstrBuf(instr, ctx, nestedCtx));
@@ -1212,10 +1227,10 @@ function emitBlockType(btNode, ctx) {
   const rd = tChild(btNode, 'resultDecl') || tChild(btNode, 'resultTypes');
   if (rd) {
     const vt = tFindFirst(rd, 'valueType');
-    if (vt) return Buffer.from([ValTypeCode[parseValueType(vt)] || 0x7f]);
+    if (vt) return encodeValueType(parseValueType(vt), ctx);
   }
   const vt = tFindFirst(btNode, 'valueType');
-  if (vt) return Buffer.from([ValTypeCode[parseValueType(vt)] || 0x7f]);
+  if (vt) return encodeValueType(parseValueType(vt), ctx);
   const tu = tChild(btNode, 'typeuse');
   if (tu) return encodeSLEB128(resolveTypeUse(ctx, tu));
   return Buffer.from([0x40]);
@@ -1300,29 +1315,51 @@ function emitIf(node, ctx, localCtx) {
   return Buffer.concat(parts);
 }
 
-function emitMemarg(node) {
-  const terms = tAllTerminals(node);
-  let offset = 0, align = 0;
-  for (let i = 0; i < terms.length; i++) {
-    const txt = terms[i].text || '';
-    if (txt.startsWith('offset=')) { offset = parseInt(txt.slice(7), 10) || 0; }
-    else if (txt.startsWith('align=')) { align = Math.log2(parseInt(txt.slice(6), 10) || 1); }
-    else if (terms[i].type && terms[i].type.includes('offset') && terms[i + 1]) {
-      offset = parseNum(terms[i + 1].text); i++;
-    } else if (terms[i].type && terms[i].type.includes('align') && terms[i + 1]) {
-      const aval = parseNum(terms[i + 1].text);
-      align = aval > 0 ? Math.log2(aval) : 0; i++;
-    }
-  }
-  return Buffer.concat([encodeULEB128(Math.round(align)), encodeULEB128(offset)]);
+function emitMemarg(node, ctx, op) {
+  const ma = tFindFirst(node, 'memarg');
+  const terms = ma ? tAllTerminals(ma).map(t => t.text) : [];
+  const offsetAt = terms.indexOf('offset=');
+  const alignAt = terms.indexOf('align=');
+  const offset = offsetAt < 0 ? 0 : Number(terms[offsetAt + 1]);
+  const align = alignAt < 0 ? naturalAlignment(op) : Math.log2(Number(terms[alignAt + 1]));
+  if (!Number.isInteger(offset) || offset < 0 || offset > 0xffffffff) throw new Error(`Invalid ${op} memory32 offset ${offset}`);
+  if (!Number.isInteger(align) || align < 0 || align > naturalAlignment(op)) throw new Error(`Invalid ${op} alignment`);
+  const memoryIndex = resolveMemoryIndex(tFindFirst(node, 'memidx'), ctx);
+  return Buffer.concat([
+    encodeULEB128(align | (memoryIndex ? 0x40 : 0)),
+    ...(memoryIndex ? [encodeULEB128(memoryIndex)] : []),
+    encodeULEB128(offset)
+  ]);
 }
 
-function emitHeapType(node) {
+function resolveMemoryIndex(indexNode, ctx) {
+  const memoryIndex = tResolveIdxNode(indexNode, ctx.memIds);
+  if (indexNode) {
+    const id = tAllTerminals(indexNode).find(t => t.text.startsWith('$'));
+    if (id && !ctx.memIds.has(id.text)) throw new Error(`Unknown memory ${id.text}`);
+  }
+  if (!Number.isInteger(memoryIndex) || memoryIndex < 0 || memoryIndex > 0xffffffff) throw new Error(`Invalid memory index ${memoryIndex}`);
+  return memoryIndex;
+}
+
+function emitHeapType(node, ctx) {
   const terms = tAllTerminals(node).map(t => t.text);
-  for (const t of terms) { if (HeapTypeCode[t] !== undefined) return Buffer.from([HeapTypeCode[t]]); }
-  const nat = terms.find(t => /^\d+$/.test(t));
-  if (nat) return encodeULEB128(parseInt(nat, 10));
-  return Buffer.from([0x70]);
+  const heap = terms.find(t => HeapTypeCode[t] !== undefined || /^\d+$/.test(t) || t.startsWith('$'));
+  if (heap === undefined) throw new Error(`Unknown heap type ${terms.join(' ')}`);
+  return encodeHeapType(heap, ctx);
+}
+
+function encodeSLEB33Index(index) {
+  const bytes = [];
+  let remaining = BigInt(index);
+  do {
+    const byte = Number(remaining & 0x7fn);
+    remaining >>= 7n;
+    const more = remaining !== 0n || (byte & 0x40) !== 0;
+    bytes.push(byte | (more ? 0x80 : 0));
+    if (!more) break;
+  } while (true);
+  return Buffer.from(bytes);
 }
 
 function resolveLocal(node, localCtx) {
@@ -1381,18 +1418,18 @@ function emitNonBlock(node, ctx, localCtx) {
     parts.push(Buffer.from([0xfb]), encodeULEB128(OPCODE_FB[op]));
     if (op === 'ref.test' || op === 'ref.cast') {
       const rt = tChild(node, 'reftype');
-      const nullable = rt && tAllTerminals(rt).some(t => t.text === 'null');
-      parts.push(Buffer.from([nullable ? 0x01 : 0x00]));
-      parts.push(emitHeapType(rt || node));
+      const nullable = rt && tAllTerminals(rt).some(t => ['null', 'funcref', 'externref', 'exnref'].includes(t.text));
+      parts[1] = encodeULEB128(OPCODE_FB[op] + (nullable ? 1 : 0));
+      parts.push(emitHeapType(rt || node, ctx));
     } else if (op === 'br_on_cast' || op === 'br_on_cast_fail') {
       const labelIdx = resolveLabelIdx(tFindFirst(node, 'labelidx'), localCtx);
-      parts.push(encodeULEB128(labelIdx));
       const rts = tChildrenOfType(node, 'reftype');
-      const flags = (rts[0] && tAllTerminals(rts[0]).some(t => t.text === 'null') ? 1 : 0)
-                  | (rts[1] && tAllTerminals(rts[1]).some(t => t.text === 'null') ? 2 : 0);
+      const nullable = rt => rt && tAllTerminals(rt).some(t => ['null', 'funcref', 'externref', 'exnref'].includes(t.text));
+      const flags = (nullable(rts[0]) ? 1 : 0) | (nullable(rts[1]) ? 2 : 0);
       parts.push(Buffer.from([flags]));
-      if (rts[0]) parts.push(emitHeapType(rts[0]));
-      if (rts[1]) parts.push(emitHeapType(rts[1]));
+      parts.push(encodeULEB128(labelIdx));
+      if (rts.length !== 2) throw new Error(`${op} requires two reference types`);
+      parts.push(emitHeapType(rts[0], ctx), emitHeapType(rts[1], ctx));
     } else if (op === 'struct.get' || op === 'struct.get_s' || op === 'struct.get_u' || op === 'struct.set') {
       const ti = tFindFirst(node, 'typeidx'); const fi = tFindFirst(node, 'fieldidx');
       parts.push(encodeULEB128(tResolveIdxNode(ti, ctx.typeIds)));
@@ -1422,22 +1459,43 @@ function emitNonBlock(node, ctx, localCtx) {
   if (OPCODE_FD[op] !== undefined) {
     parts.push(Buffer.from([0xfd]), encodeULEB128(OPCODE_FD[op]));
     if (op === 'v128.const') {
-      const bytes = Buffer.alloc(16, 0);
-      const natTerms = terms.filter(t => t.type === 'nat');
-      for (let li = 0; li < 16 && li < natTerms.length; li++) bytes[li] = parseInt(natTerms[li].text, 10) & 0xff;
-      parts.push(bytes);
+      const constant = tFindFirst(node, 'simdConst');
+      const laneTerms = tAllTerminals(constant);
+      const shape = laneTerms[0].text;
+      const width = Number(shape.match(/^[if](8|16|32|64)x/)[1]);
+      const lanes = tChildrenOfType(constant, 'floatValue', 'signedNat');
+      if (lanes.length !== 128 / width) throw new Error(`Invalid ${shape} lane count`);
+      const bytes = lanes.map(lane => {
+        const text = tAllTerminals(lane).map(term => term.text).join('');
+        if (shape[0] === 'f') return encodeWatFloat(text, width);
+        const value = BigInt(text);
+        if (value < -(1n << BigInt(width - 1)) || value >= 1n << BigInt(width)) throw new Error(`Invalid ${shape} lane ${text}`);
+        let bits = BigInt.asUintN(width, value);
+        const laneBytes = Buffer.alloc(width / 8);
+        for (let i = 0; i < laneBytes.length; i++) {
+          laneBytes[i] = Number(bits & 0xffn);
+          bits >>= 8n;
+        }
+        return laneBytes;
+      });
+      parts.push(Buffer.concat(bytes));
     } else if (op === 'i8x16.shuffle') {
       const natTerms = terms.filter(t => t.type === 'nat');
       for (let li = 0; li < 16; li++) parts.push(Buffer.from([natTerms[li] ? parseInt(natTerms[li].text, 10) & 0xff : 0]));
     } else {
-      const maNode = tFindFirst(node, 'memarg');
-      if (maNode) parts.push(emitMemarg(maNode));
+      if (op.startsWith('v128.load') || op.startsWith('v128.store')) parts.push(emitMemarg(node, ctx, op));
       // lane index (for extract_lane / replace_lane / load*_lane / store*_lane)
       const laneOps = ['extract_lane', 'replace_lane', 'load8_lane', 'load16_lane', 'load32_lane',
                        'load64_lane', 'store8_lane', 'store16_lane', 'store32_lane', 'store64_lane'];
       if (laneOps.some(s => op.includes(s))) {
-        const laneT = terms.find(t => t.type === 'nat');
-        parts.push(Buffer.from([laneT ? parseInt(laneT.text, 10) : 0]));
+        const laneNode = tFindFirst(node, 'laneidx');
+        const laneT = laneNode && tAllTerminals(laneNode).find(t => t.type === 'nat');
+        if (!laneT) throw new Error(`${op} requires a lane index`);
+        const lane = Number(laneT.text);
+        const bits = /(?:load|store)(8|16|32|64)_lane/.exec(op);
+        const laneCount = bits ? 128 / Number(bits[1]) : 128 / Number(op.match(/^[if](8|16|32|64)x/)[1]);
+        if (!Number.isInteger(lane) || lane < 0 || lane >= laneCount) throw new Error(`Invalid ${op} lane ${lane}`);
+        parts.push(Buffer.from([lane]));
       }
     }
     return Buffer.concat(parts);
@@ -1449,19 +1507,19 @@ function emitNonBlock(node, ctx, localCtx) {
     if (op === 'memory.init') {
       // Parser maps `memory.init a b` operands as memidx then dataidx.
       // Binary encoding for 0xFC/8 is dataidx then memidx.
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'memidx'), ctx.memIds)));
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'dataidx'), ctx.dataIds)));
+      parts.push(encodeULEB128(resolveMemoryIndex(tFindFirst(node, 'memidx'), ctx)));
     } else if (op === 'data.drop') {
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'dataidx'), ctx.dataIds)));
     } else if (op === 'memory.copy') {
       const ms = tChildrenOfType(node, 'memidx');
-      parts.push(encodeULEB128(tResolveIdxNode(ms[0], ctx.memIds)));
-      parts.push(encodeULEB128(tResolveIdxNode(ms[1], ctx.memIds)));
+      parts.push(encodeULEB128(resolveMemoryIndex(ms[0], ctx)));
+      parts.push(encodeULEB128(resolveMemoryIndex(ms[1], ctx)));
     } else if (op === 'memory.fill') {
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'memidx'), ctx.memIds)));
+      parts.push(encodeULEB128(resolveMemoryIndex(tFindFirst(node, 'memidx'), ctx)));
     } else if (op === 'table.init') {
-      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'tableidx'), ctx.tableIds)));
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'elemidx'), ctx.elemIds)));
+      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'tableidx'), ctx.tableIds)));
     } else if (op === 'elem.drop') {
       parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'elemidx'), ctx.elemIds)));
     } else if (op === 'table.copy') {
@@ -1486,11 +1544,11 @@ function emitNonBlock(node, ctx, localCtx) {
     const t = terms.find(t => t.text && /^-?\d/.test(t.text));
     parts.push(encodeSLEB128(t ? parseNum(t.text) : 0));
   } else if (op === 'f32.const') {
-    const t = terms.find(t => t.text && /^[+\-]?(\d|inf|nan)/.test(t.text));
-    parts.push(encodeF32(t ? parseNum(t.text) : 0));
+    const value = tFindFirst(node, 'floatValue');
+    parts.push(encodeWatFloat(value && tAllTerminals(value).map(t => t.text).join(''), 32));
   } else if (op === 'f64.const') {
-    const t = terms.find(t => t.text && /^[+\-]?(\d|inf|nan)/.test(t.text));
-    parts.push(encodeF64(t ? parseNum(t.text) : 0));
+    const value = tFindFirst(node, 'floatValue');
+    parts.push(encodeWatFloat(value && tAllTerminals(value).map(t => t.text).join(''), 64));
   } else if (op === 'local.get' || op === 'local.set' || op === 'local.tee') {
     parts.push(encodeULEB128(resolveLocal(node, localCtx)));
   } else if (op === 'global.get' || op === 'global.set') {
@@ -1537,7 +1595,7 @@ function emitNonBlock(node, ctx, localCtx) {
   } else if (op === 'rethrow') {
     parts.push(encodeULEB128(resolveLabelIdx(tFindFirst(node, 'labelidx') || tFindFirst(node, 'index'), localCtx)));
   } else if (op === 'ref.null') {
-    parts.push(emitHeapType(tChild(node, 'heaptype') || node));
+    parts.push(emitHeapType(tChild(node, 'heaptype') || node, ctx));
   } else if (op === 'ref.func') {
     parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'funcidx') || tFindFirst(node, 'index'), ctx.funcIds)));
   } else if (op === 'select') {
@@ -1546,13 +1604,12 @@ function emitNonBlock(node, ctx, localCtx) {
       parts[0] = Buffer.from([0x1c]);
       const vts = tChildrenOfType(rt, 'valueType');
       parts.push(encodeULEB128(vts.length));
-      for (const vt of vts) parts.push(Buffer.from([ValTypeCode[parseValueType(vt)] || 0x7f]));
+      for (const vt of vts) parts.push(encodeValueType(parseValueType(vt), ctx));
     }
   } else if (op === 'memory.size' || op === 'memory.grow') {
-    parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(node, 'memidx'), ctx.memIds)));
+    parts.push(encodeULEB128(resolveMemoryIndex(tFindFirst(node, 'memidx'), ctx)));
   } else if (isMemLoadStore(op)) {
-    const ma = tFindFirst(node, 'memarg');
-    parts.push(ma ? emitMemarg(ma) : Buffer.from([0x00, 0x00]));
+    parts.push(emitMemarg(node, ctx, op));
   }
   // Simple opcodes (no immediates) are already handled by pushing just the opcode byte
 
@@ -1566,7 +1623,6 @@ function normalizeBulkTableShorthands(sourceWat) {
   let out = sourceWat;
   out = out.replace(/\btable\.copy(?=\s*\))/g, 'table.copy 0 0');
   out = out.replace(/\btable\.init\s+([^()\s]+)(?=\s*\))/g, 'table.init $1 0');
-  out = out.replace(/\bmemory\.init\s+([^()\s]+)(?=\s*\))/g, 'memory.init $1 0');
   out = out.replace(/\bmemory\.init(?=\s*\))/g, 'memory.init 0 0');
   out = out.replace(/\bdata\.drop(?=\s*\))/g, 'data.drop 0');
   // call_indirect / return_call_indirect with no typeuse: inject (type 0) so parser accepts.
@@ -1592,15 +1648,55 @@ function normalizeSignedConstImmediates(sourceWat) {
   return out;
 }
 
+function normalizeWatCode(source) {
+  const parts = [];
+  let start = 0;
+  let offset = 0;
+  while (offset < source.length) {
+    const quoted = source[offset] === '"';
+    const lineComment = source.startsWith(';;', offset);
+    const blockComment = source.startsWith('(;', offset);
+    if (!quoted && !lineComment && !blockComment) {
+      offset++;
+      continue;
+    }
+    parts.push(normalizeSignedConstImmediates(normalizeBulkTableShorthands(source.slice(start, offset))));
+    const protectedStart = offset;
+    if (quoted) {
+      offset++;
+      let closed = false;
+      while (offset < source.length) {
+        if (source[offset] === '\\') offset += 2;
+        else if (source[offset++] === '"') { closed = true; break; }
+      }
+      if (!closed) throw new Error(`Unterminated WAT string at offset ${protectedStart}`);
+    } else if (lineComment) {
+      while (offset < source.length && source[offset] !== '\n' && source[offset] !== '\r') offset++;
+    } else {
+      let depth = 1;
+      offset += 2;
+      while (offset < source.length && depth > 0) {
+        if (source.startsWith('(;', offset)) { depth++; offset += 2; }
+        else if (source.startsWith(';)', offset)) { depth--; offset += 2; }
+        else offset++;
+      }
+    }
+    const protectedText = source.slice(protectedStart, offset);
+    // Canonical byte escapes avoid UTF-16 lexer limitations for astral scalars.
+    parts.push(quoted ? quoteWatBytes(decodeString(protectedText)) : protectedText);
+    start = offset;
+  }
+  parts.push(normalizeSignedConstImmediates(normalizeBulkTableShorthands(source.slice(start))));
+  return parts.join('');
+}
+
 // ============================================================================
 // MAIN ASSEMBLER
 // ============================================================================
 
 class WatAssembler {
   assemble(sourceWat) {
-    const normalizedWat = normalizeSignedConstImmediates(
-      normalizeBulkTableShorthands(sourceWat)
-    ); // shorthands + no-sig call_indirect + signed integer const compatibility
+    const normalizedWat = normalizeWatCode(sourceWat);
     const p = new WATParser(normalizedWat);
     const tree = p.parse();
     const ctx = new ModuleContext(tree);
@@ -1613,6 +1709,7 @@ class WatAssembler {
       genFunctionSection(ctx),
       genTableSection(ctx),
       genMemorySection(ctx),
+      genTagSection(ctx),
       genGlobalSection(ctx),
       genExportSection(ctx),
       genStartSection(ctx),
@@ -1620,7 +1717,6 @@ class WatAssembler {
       genDataCountSection(ctx),
       genCodeSection(ctx),
       genDataSection(ctx),
-      genTagSection(ctx),
     ].filter(Boolean);
     return Buffer.concat(sections);
   }

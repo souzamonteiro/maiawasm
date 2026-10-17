@@ -20,6 +20,29 @@ Main file: [wat-assembler.js](wat-assembler.js)
 - fixed prefixed table instructions (`0xFC`)
 - fixed SIMD encoding (`0xFD`, subopcodes encoded as `u32 LEB128`)
 - fixed global value type handling (`valueType`)
+- preserved escaped import/export names and arbitrary data bytes using shared
+  [string helpers](wasm-strings.js), with fatal UTF-8 for names and support for
+  supplementary Unicode scalars and `\u{...}` escapes
+- kept compatibility rewrites and CLI comment handling from modifying string
+  contents; invalid escapes, lone surrogates and raw controls now fail explicitly
+- preserved scalar float bits through exact hexadecimal WAT output, including
+  signed zero, infinities and NaN payloads, using shared
+  [float helpers](wasm-floats.js) and single target-width literal rounding
+- corrected `v128.const` packing for all six lane shapes, including exact floating
+  lane payloads and width-checked integer lanes
+- extracted a [structured instruction decoder](wasm-instructions.js) and
+  [WAT printer](wasm-instruction-wat.js); function bodies and initializer
+  boundaries now share one immediate decoder
+- corrected `table.init` binary element/table operand order and preserved
+  multi-instruction global/data-offset initializers in WAT output
+- added a [standalone module decoder](wasm-module.js) using Uint8Array, structured
+  reference types and default input copying, without generating WAT or requiring
+  Buffer/native WebAssembly; the disassembler keeps its legacy type fields
+- rejected unknown import/export kinds and nonzero tag attributes instead of
+  discarding them; decoding is still not full semantic validation
+- added [structural control analysis](wasm-control.js): expression delimiter and
+  legacy handler placement checks, function branch/rethrow/catch label checks,
+  and decoded frame/branch links; operand/type validation remains unfinished
 
 ## How to extend
 

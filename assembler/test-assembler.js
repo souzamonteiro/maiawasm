@@ -57,7 +57,7 @@ const TESTS = [
   ['bulk memory: memory.copy + memory.fill',
     '(module (memory 1) (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.copy local.get 0 local.get 1 local.get 2 memory.fill) (export "ops" (func $ops)))'],
   ['bulk memory: memory.init + data.drop',
-    '(module (memory 1) (data "a") (data "b") (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.init 1 0 data.drop 1) (export "ops" (func $ops)))'],
+    '(module (memory 1) (data "a") (data "b") (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.init 0 1 data.drop 1) (export "ops" (func $ops)))'],
   ['bulk memory: memory.init shorthand memidx default',
     '(module (memory 1) (data "a") (func $ops (param i32 i32 i32) local.get 0 local.get 1 local.get 2 memory.init 0) (export "ops" (func $ops)))'],
   ['bulk memory: data.drop shorthand default',

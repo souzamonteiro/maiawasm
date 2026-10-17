@@ -30,9 +30,9 @@ runCase('fc_memory_and_table', [
   0xfc, 0x08, 0x02, 0x00, // memory.init data=2 mem=0
   0xfc, 0x09, 0x03,       // data.drop 3
   0xfc, 0x0a, 0x00, 0x01, // memory.copy 0 1
-  0xfc, 0x0c, 0x01, 0x02, // table.init 1 2
+  0xfc, 0x0c, 0x01, 0x02, // table.init table=2 elem=1
   0xfc, 0x0f, 0x01        // table.grow 1
-], ['memory.init 2', 'data.drop 3', 'memory.copy 0 1', 'table.init 1 2', 'table.grow 1']);
+], ['memory.init 2', 'data.drop 3', 'memory.copy 0 1', 'table.init 2 1', 'table.grow 1']);
 
 // FB family
 runCase('fb_struct_and_array', [
@@ -41,15 +41,15 @@ runCase('fb_struct_and_array', [
 ], ['struct.get 1 2', 'array.new_fixed 2 3']);
 
 runCase('fb_ref_and_cast', [
-  0xfb, 0x14, 0x01, 0x70,       // ref.test null func
-  0xfb, 0x15, 0x00, 0x6f,       // ref.cast extern
-  0xfb, 0x18, 0x01, 0x03, 0x70, 0x6f // br_on_cast 1 null func null extern
-], ['ref.test null func', 'ref.cast extern', 'br_on_cast 1 null func null extern']);
+  0xfb, 0x15, 0x70,
+  0xfb, 0x16, 0x6f,
+  0xfb, 0x18, 0x03, 0x01, 0x70, 0x6f
+], ['ref.test (ref null func)', 'ref.cast (ref extern)', 'br_on_cast 1 (ref null func) (ref null extern)']);
 
 runCase('fb_ref_and_cast_typeidx_heaptype', [
-  0xfb, 0x14, 0x01, 0x80, 0x01,             // ref.test null (heaptype typeidx 128)
-  0xfb, 0x19, 0x02, 0x00, 0x80, 0x01, 0x01  // br_on_cast_fail 2 128 1
-], ['ref.test null 128', 'br_on_cast_fail 2 128 1']);
+  0xfb, 0x15, 0x80, 0x01,
+  0xfb, 0x19, 0x00, 0x02, 0x80, 0x01, 0x01
+], ['ref.test (ref null 128)', 'br_on_cast_fail 2 (ref 128) (ref 1)']);
 
 runCase('fb_array_data_elem_copy', [
   0xfb, 0x09, 0x03, 0x01, // array.new_data 3 1

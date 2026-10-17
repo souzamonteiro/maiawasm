@@ -512,15 +512,17 @@ function encodeElementSection(elementEntries) {
       body.push(encodeULEB128(entry.tableIndex || 0));
     }
 
-    if (!(flags & 0x01) || (flags & 0x02)) {
+    if (!(flags & 0x01)) {
       if (!entry.initExpr) {
         throw new Error(`Element entry missing initExpr for flags=${flags}`);
       }
       body.push(entry.initExpr);
     }
 
-    if (flags & 0x03) {
-      body.push(Buffer.from([entry.reftype || 0x70]));
+    if (flags >= 5) {
+      body.push(entry.reftypeBytes || Buffer.from([entry.reftype]));
+    } else if (flags === 1 || flags === 2 || flags === 3) {
+      body.push(Buffer.from([0x00]));
     }
 
     const elements = entry.elements || [];
@@ -569,7 +571,14 @@ function encodeWasmModule({
   return Buffer.concat([magicVersion, ...sections]);
 }
 
-function rewriteConstExprBytes(expr, mapFuncIndex, mapGlobalIndex, contextLabel) {
+function remapHeapType(value, mapTypeIndex, contextLabel) {
+  if (value < 0n) return value;
+  const mapped = mapTypeIndex(Number(value));
+  if (mapped === undefined) throw new Error(`Missing heap type remap for ${value} (${contextLabel})`);
+  return mapped;
+}
+
+function rewriteConstExprBytes(expr, mapFuncIndex, mapGlobalIndex, contextLabel, mapTypeIndex) {
   const out = [];
   let offset = 0;
 
@@ -617,7 +626,7 @@ function rewriteConstExprBytes(expr, mapFuncIndex, mapGlobalIndex, contextLabel)
     }
     if (opcode === 0xd0) {
       const heapType = readSLEBAt(offset);
-      out.push(encodeSLEB128(heapType.value));
+      out.push(encodeSLEB128(remapHeapType(heapType.value, mapTypeIndex, contextLabel)));
       offset += heapType.bytesRead;
       continue;
     }
@@ -731,11 +740,23 @@ function rewriteCodeBytes(code, {
 
     if (opcode >= 0x28 && opcode <= 0x3e) {
       const align = readULEBAt(offset);
-      out.push(encodeULEB128(align.value));
       offset += align.bytesRead;
-      const memOffset = readULEBAt(offset);
-      out.push(encodeULEB128(memOffset.value));
-      offset += memOffset.bytesRead;
+      let memoryIndex = 0;
+      if (align.value & 0x40) {
+        const index = readULEBAt(offset);
+        memoryIndex = index.value;
+        offset += index.bytesRead;
+      }
+      const mapped = mapMemoryIndex(memoryIndex);
+      out.push(encodeULEB128((align.value & 0x3f) | (mapped ? 0x40 : 0)));
+      if (mapped) out.push(encodeULEB128(mapped));
+      // The disassembler validated this u64 offset; retain legal padded bytes.
+      const offsetStart = offset;
+      while (offset < code.length && (code[offset++] & 0x80)) {}
+      if (offset === offsetStart || (code[offset - 1] & 0x80)) {
+        throw new Error(`Truncated memory offset (${contextLabel})`);
+      }
+      copyBytes(offsetStart, offset);
       continue;
     }
 
@@ -776,7 +797,7 @@ function rewriteCodeBytes(code, {
 
     if (opcode === 0xd0) {
       const heapType = readSLEBAt(offset);
-      out.push(encodeSLEB128(heapType.value));
+      out.push(encodeSLEB128(remapHeapType(heapType.value, mapTypeIndex, contextLabel)));
       offset += heapType.bytesRead;
       continue;
     }
@@ -932,6 +953,7 @@ class WasmLinker {
         path: absPath,
         wat,
         typeSection: dis.typeSection,
+        typeGroups: dis.typeGroups,
         importSection: dis.importSection,
         functionSection: dis.functionSection,
         tableSection: dis.tableSection,
@@ -1111,6 +1133,16 @@ class WasmLinker {
     }
 
     const modules = this.analyzeModules(filePaths);
+    for (const mod of modules) {
+      const unsupportedType = mod.typeGroups.some(group => group.recursive) ||
+        mod.typeSection.some(type => type.kind !== 'func' || !type.subtype.isFinal ||
+          type.subtype.supertypes.length > 0 ||
+          [...type.params, ...type.results].some(value => VAL_TYPE_CODE[value] === undefined));
+      const unsupportedLocal = mod.codeSection.some(body => body.locals.some(local => typeof local.valType !== 'number'));
+      if (unsupportedType || unsupportedLocal) {
+        throw new Error(`Static mode does not support recursive/subtyped/aggregate types or explicit reference signatures/locals: ${mod.id}`);
+      }
+    }
     const { resolutions, unresolved, ambiguous } = this.resolve(modules);
 
     if (ambiguous.length > 0) {
@@ -1612,26 +1644,23 @@ class WasmLinker {
     const outputDataEntries = [];
     for (const mod of linkResult.modules) {
       for (const dataEntry of mod.dataSection || []) {
-        if (!outputMemoryImport) {
-          throw new Error(`Data segments require an imported memory in static mode: ${mod.id}`);
-        }
-        if (dataEntry.flags === 0) {
-          outputDataEntries.push({
-            flags: 0,
-            memoryIndex: 0,
-            offsetExpr: dataEntry.offsetExpr,
-            bytes: dataEntry.bytes,
-          });
-        } else if (dataEntry.flags === 1) {
+        if (dataEntry.flags === 1) {
           outputDataEntries.push({
             flags: 1,
             bytes: dataEntry.bytes,
           });
-        } else if (dataEntry.flags === 2) {
+        } else if (dataEntry.flags === 0 || dataEntry.flags === 2) {
+          const memoryIndex = mapMemoryIndexForModule(mod.id, dataEntry.memoryIndex || 0);
           outputDataEntries.push({
-            flags: 2,
-            memoryIndex: mapMemoryIndexForModule(mod.id, dataEntry.memoryIndex || 0),
-            offsetExpr: dataEntry.offsetExpr,
+            flags: memoryIndex === 0 && dataEntry.flags === 0 ? 0 : 2,
+            memoryIndex,
+            offsetExpr: rewriteConstExprBytes(
+              dataEntry.offsetExpr,
+              oldFuncIdx => resolveFuncIndex(mod.id, oldFuncIdx),
+              oldGlobalIdx => mapGlobalIndexForModule(mod.id, oldGlobalIdx),
+              `${mod.id}:data-offset`,
+              oldTypeIdx => moduleTypeRemap.get(mod.id).get(oldTypeIdx)
+            ),
             bytes: dataEntry.bytes,
           });
         }
@@ -1697,7 +1726,8 @@ class WasmLinker {
           globalEntry.initExpr,
           oldFuncIdx => resolveFuncIndex(mod.id, oldFuncIdx),
           oldGlobalIdx => mapGlobalIndexForModule(mod.id, oldGlobalIdx),
-          `${mod.id}:global-init:${i}`
+          `${mod.id}:global-init:${i}`,
+          oldTypeIdx => moduleTypeRemap.get(mod.id).get(oldTypeIdx)
         );
         outputGlobalEntries.push({
           globalType: globalEntry.globalType,
@@ -1713,9 +1743,19 @@ class WasmLinker {
           flags: elemEntry.flags,
           tableIndex: elemEntry.tableIndex,
           reftype: elemEntry.reftype,
+          reftypeBytes: elemEntry.reftypeBytes,
           initExpr: elemEntry.initExpr,
           elements: [],
         };
+
+        if (mappedEntry.reftypeBytes && (mappedEntry.reftypeBytes[0] === 0x63 || mappedEntry.reftypeBytes[0] === 0x64)) {
+          const heapType = decodeSLEB128(mappedEntry.reftypeBytes, 1);
+          const mappedType = remapHeapType(heapType.value,
+            oldTypeIdx => moduleTypeRemap.get(mod.id).get(oldTypeIdx), `${mod.id}:element-type`);
+          mappedEntry.reftypeBytes = Buffer.concat([
+            mappedEntry.reftypeBytes.subarray(0, 1), encodeSLEB128(mappedType)
+          ]);
+        }
 
         if ((mappedEntry.flags & 0x02) && !(mappedEntry.flags & 0x01)) {
           mappedEntry.tableIndex = mapTableIndexForModule(mod.id, mappedEntry.tableIndex || 0);
@@ -1726,7 +1766,8 @@ class WasmLinker {
             mappedEntry.initExpr,
             oldFuncIdx => resolveFuncIndex(mod.id, oldFuncIdx),
             oldGlobalIdx => mapGlobalIndexForModule(mod.id, oldGlobalIdx),
-            `${mod.id}:elem-init`
+            `${mod.id}:elem-init`,
+            oldTypeIdx => moduleTypeRemap.get(mod.id).get(oldTypeIdx)
           );
         }
 
@@ -1736,7 +1777,8 @@ class WasmLinker {
               expr,
               oldFuncIdx => resolveFuncIndex(mod.id, oldFuncIdx),
               oldGlobalIdx => mapGlobalIndexForModule(mod.id, oldGlobalIdx),
-              `${mod.id}:elem-expr:${index}`
+              `${mod.id}:elem-expr:${index}`,
+              oldTypeIdx => moduleTypeRemap.get(mod.id).get(oldTypeIdx)
             );
           });
         } else {

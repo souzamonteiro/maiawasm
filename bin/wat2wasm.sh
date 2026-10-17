@@ -59,11 +59,7 @@ const [inputWat, outputWasm, assemblerPath] = process.argv.slice(2);
 const WatAssembler = require(assemblerPath);
 
 try {
-	const source = fs.readFileSync(inputWat, 'utf8')
-		.split('\n')
-		.map(line => line.replace(/;;.*$/, ''))
-		.join('\n')
-		.trim();
+	const source = fs.readFileSync(inputWat, 'utf8');
 	const wasm = new WatAssembler().assemble(source);
 	fs.writeFileSync(outputWasm, Buffer.from(wasm));
 	console.log(`WASM written to ${outputWasm}`);

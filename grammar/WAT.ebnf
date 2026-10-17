@@ -13,6 +13,7 @@ watBody           ::= module | eof
 
 module            ::= '(' 'module' id? moduleField* ')'
 moduleField       ::= typeDef
+                    | recDef
                     | importDef
                     | tagDef
                     | globalDef
@@ -25,18 +26,20 @@ moduleField       ::= typeDef
                     | exportDef
 
 typeDef           ::= '(' 'type' id? rectype ')'
+recDef            ::= '(' 'rec' typeDef* ')'
 rectype           ::= '(' 'rec' subtype+ ')' | subtype
 subtype           ::= '(' 'sub' final? supertype* comptype ')' | comptype
 final             ::= 'final'
-supertype         ::= typeuse
+supertype         ::= typeidx | typeuse
 comptype          ::= funcType
                     | structType
                     | arrayType
 
 funcType          ::= '(' 'func' paramDecl* resultDecl* ')'
 structType        ::= '(' 'struct' fieldDecl* ')'
-arrayType         ::= '(' 'array' fieldDecl ')'
-fieldDecl         ::= '(' 'field' id? storagetype mutField? ')'
+arrayType         ::= '(' 'array' (fieldDecl | fieldType) ')'
+fieldDecl         ::= '(' 'field' id? fieldType ')'
+fieldType         ::= '(' 'mut' storagetype ')' | storagetype mutField?
 
 mutField          ::= '(' 'mut' ')'
 storagetype       ::= valueType | packType
@@ -106,10 +109,10 @@ foldedInstr       ::= '(' 'block' label? blockType? instr* ')'
                     | '(' 'try_table' label? blockType? catchClause* instr* ')'
                     | '(' nonBlockInstr instr* ')'
 
-catchClause       ::= '(' 'catch' tagidx label ')'
-                    | '(' 'catch_ref' tagidx label ')'
-                    | '(' 'catch_all' label ')'
-                    | '(' 'catch_all_ref' label ')'
+catchClause       ::= '(' 'catch' tagidx labelidx ')'
+                    | '(' 'catch_ref' tagidx labelidx ')'
+                    | '(' 'catch_all' labelidx ')'
+                    | '(' 'catch_all_ref' labelidx ')'
 
 /* Sequential (unparenthesized) instructions */
 seqInstr          ::= nonBlockInstr
@@ -125,6 +128,8 @@ nonBlockInstr     ::= 'nop'
                     | 'return'
                     | 'throw_ref'
                     | 'select' resultTypes?
+                    | floatConstInstr
+                    | memoryAccessInstr
                     | simdLikeInstr
                     | numericLikeInstr
                     | memLikeInstr
@@ -145,7 +150,8 @@ nonBlockInstr     ::= 'nop'
                     | 'memory.grow' memidx?
                     | 'memory.fill' memidx?
                     | 'memory.copy' memidx? memidx?
-                    | 'memory.init' memidx? dataidx
+                    | 'memory.init' memidx dataidx
+                    | 'memory.init' dataidx
                     | 'data.drop' dataidx
                     | 'ref.null' heaptype
                     | 'ref.func' funcidx
@@ -201,7 +207,29 @@ numericLikeInstr  ::= dottedName memarg
                     | dottedName float
                     | dottedName
 
+floatConstInstr   ::= ( 'f32.const' | 'f64.const' ) floatValue
+floatValue        ::= float | integer | sign? nat
+
 memLikeInstr      ::= dottedName memarg?
+
+memoryAccessInstr ::= memoryOpcode memidx? memarg?
+                    | memoryLaneOpcode memidx memarg? laneidx
+                    | memoryLaneOpcode memarg? laneidx
+memoryOpcode      ::= 'i32.load' | 'i64.load' | 'f32.load' | 'f64.load'
+                    | 'i32.load8_s' | 'i32.load8_u' | 'i32.load16_s' | 'i32.load16_u'
+                    | 'i64.load8_s' | 'i64.load8_u' | 'i64.load16_s' | 'i64.load16_u'
+                    | 'i64.load32_s' | 'i64.load32_u'
+                    | 'i32.store' | 'i64.store' | 'f32.store' | 'f64.store'
+                    | 'i32.store8' | 'i32.store16' | 'i64.store8' | 'i64.store16' | 'i64.store32'
+                    | 'v128.load' | 'v128.store'
+                    | 'v128.load8x8_s' | 'v128.load8x8_u'
+                    | 'v128.load16x4_s' | 'v128.load16x4_u'
+                    | 'v128.load32x2_s' | 'v128.load32x2_u'
+                    | 'v128.load8_splat' | 'v128.load16_splat'
+                    | 'v128.load32_splat' | 'v128.load64_splat'
+                    | 'v128.load32_zero' | 'v128.load64_zero'
+memoryLaneOpcode  ::= 'v128.load8_lane' | 'v128.load16_lane' | 'v128.load32_lane' | 'v128.load64_lane'
+                    | 'v128.store8_lane' | 'v128.store16_lane' | 'v128.store32_lane' | 'v128.store64_lane'
 
 simdLikeInstr     ::= 'v128.const' simdConst
                     | dottedName laneidx
@@ -221,8 +249,8 @@ simdConst         ::= 'i8x16' signedNat signedNat signedNat signedNat signedNat 
                     | 'i16x8' signedNat signedNat signedNat signedNat signedNat signedNat signedNat signedNat
                     | 'i32x4' signedNat signedNat signedNat signedNat
                     | 'i64x2' signedNat signedNat
-                    | 'f32x4' float float float float
-                    | 'f64x2' float float
+                    | 'f32x4' floatValue floatValue floatValue floatValue
+                    | 'f64x2' floatValue floatValue
 
 /* ============================================================================
  * Type System Constructs
@@ -256,7 +284,7 @@ dataidx           ::= index
 labelidx          ::= index
 fieldidx          ::= index
 
-signedNat         ::= sign? nat
+signedNat         ::= integer | sign? nat
 
 /* Numeric types */
 nt                ::= 'i32' | 'i64' | 'f32' | 'f64'
@@ -266,7 +294,7 @@ sx                ::= '_s' | '_u'
 limits            ::= addrtype? nat nat?
 addrtype          ::= 'i32' | 'i64'
 
-memarg            ::= 'offset=' nat 'align=' nat
+memarg            ::= 'offset=' nat ('align=' nat)? | 'align=' nat
                     | 'offset=' nat
                     | 'align=' nat
 laneidx           ::= nat
@@ -309,11 +337,14 @@ integer           ::= '-' digit+
 nat               ::= digit+
 digit             ::= [0-9]
 
-float             ::= sign? digit+ ( '.' digit+ ) ( ( 'e' | 'E' ) sign? digit+ )?
-                    | sign? digit+ ( ( 'e' | 'E' ) sign? digit+ )
-                    | sign? '0x' hexdigit+ ( '.' hexdigit+ )? ( ( 'p' | 'P' ) sign? digit+ )?
+float             ::= sign? floatDigits ( '.' floatDigits? ) ( ( 'e' | 'E' ) sign? floatDigits )?
+                    | sign? floatDigits ( ( 'e' | 'E' ) sign? floatDigits )
+                    | sign? '0x' floatHexDigits ( '.' floatHexDigits? )? ( ( 'p' | 'P' ) sign? floatDigits )?
                     | sign? 'inf'
-                    | sign? 'nan' ( ':' '0x' hexdigit+ )?
+                    | sign? 'nan' ( ':' '0x' floatHexDigits )?
+
+floatDigits       ::= digit+ ( '_' digit+ )*
+floatHexDigits    ::= hexdigit+ ( '_' hexdigit+ )*
 
 sign              ::= '+' | '-'
 hexdigit          ::= [0-9A-Fa-f]
@@ -325,6 +356,7 @@ dottedName        ::= namePart ( '.' namePart )+
 
 /* Dotted keywords take priority over dottedName (instruction opcodes) */
 dottedName << 'local.get' 'local.set' 'local.tee'
+              'f32.const' 'f64.const'
               'global.get' 'global.set'
               'table.get' 'table.set' 'table.size' 'table.grow'
               'table.fill' 'table.copy' 'table.init' 'elem.drop'

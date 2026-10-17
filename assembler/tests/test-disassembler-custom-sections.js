@@ -59,4 +59,16 @@ assert.strictEqual(dis.nameSection.moduleName, 'demo_mod');
 assert.strictEqual(dis.nameSection.functionNames.get(0), 'answer');
 console.log('PASS custom_name_section_parse');
 
+assert.strictEqual(dis.disassemble(), wat);
+assert.strictEqual(dis.customSections.length, 1);
+assert.strictEqual(dis.nameSection.functionNames.size, 1);
+dis.nameSection.localNames.set(0, new Map([[0, 'stale_local']]));
+dis.buffer = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+assert.strictEqual(dis.disassemble(), '(module\n)');
+assert.strictEqual(dis.customSections.length, 0);
+assert.strictEqual(dis.nameSection.moduleName, null);
+assert.strictEqual(dis.nameSection.functionNames.size, 0);
+assert.strictEqual(dis.nameSection.localNames.size, 0);
+console.log('PASS custom_name_section_state_reset');
+
 console.log('\nAll custom-section tests passed.');
