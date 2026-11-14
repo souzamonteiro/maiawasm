@@ -1,13 +1,8 @@
 (module
 
-  (type (func
-  ))
-  (type (func
-    (result i32)
-  ))
-  (type (func
-    (param i32)
-  ))
+  (type (func))
+  (type (func (result i32)))
+  (type (func (param i32)))
 
   (table 1 1 funcref)
 

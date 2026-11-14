@@ -217,7 +217,9 @@ class WasmDisassembler extends ModuleDecoder {
       if (elem.mode === 'declarative') {
         parts.push('declare');
       } else if (elem.mode === 'active') {
-        if (elem.tableIndex !== 0) parts.push(`(table ${elem.tableIndex})`);
+        if (elem.tableIndex !== 0 || elem.flags === 2 || (elem.flags === 6 && (elem.reftype === 0x70 || elem.reftype === 'funcref'))) {
+          parts.push(`(table ${elem.tableIndex})`);
+        }
         const offset = this.decodeExpressionInstructions(elem.initExpr, []).join(' ');
         parts.push(`(offset ${offset})`);
       }
@@ -333,20 +335,36 @@ module.exports.__test = {
 };
 
 if (require.main === module) {
-  // Simple test if run directly
   const fs = require('fs');
-  const path = require('path');
-  
-  const wasmFile = process.argv[2];
+  const args = process.argv.slice(2);
+  let wasmFile = null;
+  let outputFile = null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-h' || args[i] === '--help') {
+      console.log('Usage: node wasm-disassembler.js <file.wasm> [-o|--output <file.wat>]');
+      process.exit(0);
+    } else if (args[i] === '-o' || args[i] === '--output') {
+      outputFile = args[++i];
+    } else if (!wasmFile) {
+      wasmFile = args[i];
+    }
+  }
+
   if (wasmFile) {
     const buffer = fs.readFileSync(wasmFile);
     try {
       const wat = disassembleWASM(buffer);
-      console.log(wat);
+      if (outputFile) {
+        fs.writeFileSync(outputFile, wat, 'utf8');
+      } else {
+        console.log(wat);
+      }
     } catch (e) {
       console.error(`Disassembly failed: ${e.message}`);
+      process.exitCode = 1;
     }
   } else {
-    console.log('Usage: node wasm-disassembler.js <file.wasm>');
+    console.log('Usage: node wasm-disassembler.js <file.wasm> [-o|--output <file.wat>]');
   }
 }

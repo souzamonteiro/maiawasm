@@ -26,12 +26,13 @@ function encodeULEB128(value) {
 }
 
 function encodeSLEB128(value) {
+  let v = typeof value === 'bigint' ? value : BigInt(Math.trunc(value));
   const bytes = [];
   let more = true;
   while (more) {
-    let b = value & 0x7f;
-    value >>= 7;
-    if ((value === 0 && (b & 0x40) === 0) || (value === -1 && (b & 0x40) !== 0)) {
+    let b = Number(v & 0x7fn);
+    v >>= 7n;
+    if ((v === 0n && (b & 0x40) === 0) || (v === -1n && (b & 0x40) !== 0)) {
       more = false;
     } else {
       b |= 0x80;
@@ -319,6 +320,14 @@ function parseNum(text) {
   if (text.startsWith('0x') || text.startsWith('0X')) return parseInt(text, 16);
   if (text.includes('.') || text.toLowerCase().includes('e')) return parseFloat(text);
   return parseInt(text, 10) || 0;
+}
+
+function parseBigInt(text) {
+  if (!text) return 0n;
+  text = text.trim().replace(/_/g, '');
+  if (text.startsWith('+')) text = text.slice(1);
+  if (text.startsWith('-0x') || text.startsWith('-0X')) return -BigInt(text.slice(1));
+  return BigInt(text);
 }
 
 // ============================================================================
@@ -641,10 +650,21 @@ function processImportDef(ctx, node) {
   }
 }
 
+function processInlineExports(ctx, node, kind, idx) {
+  for (const ie of tChildrenOfType(node, 'inlineExport')) {
+    const strTerm = tChildren(ie).find(c => c.type === 'string');
+    if (strTerm) {
+      const name = decodeUTF8(decodeString(strTerm.text), 'export name');
+      ctx.exports.push({ name, kind, idx });
+    }
+  }
+}
+
 function processFuncDef(ctx, node) {
   const idx = ctx.funcs.length;
   const name = tNameOf(node);
   if (name) ctx.funcIds.set(name, idx);
+  processInlineExports(ctx, node, 0, idx);
   const typeIdx = resolveTypeUse(ctx, tChild(node, 'typeuse'));
   ctx.funcs.push({ typeIdx, imported: false });
   ctx.funcDefs.push(node);
@@ -654,6 +674,7 @@ function processGlobalDef(ctx, node) {
   const idx = ctx.globals.length;
   const name = tNameOf(node);
   if (name) ctx.globalIds.set(name, idx);
+  processInlineExports(ctx, node, 3, idx);
   const gtNode = tChild(node, 'globalType');
   const mutable = gtNode ? !!tFindFirst(gtNode, 'TOKEN_mut') : false;
   const vt = tFindFirst(gtNode, 'valueType');
@@ -665,6 +686,7 @@ function processMemDef(ctx, node) {
   const idx = ctx.mems.length;
   const name = tNameOf(node);
   if (name) ctx.memIds.set(name, idx);
+  processInlineExports(ctx, node, 2, idx);
   ctx.mems.push({ imported: false, node });
 }
 
@@ -672,6 +694,7 @@ function processTableDef(ctx, node) {
   const idx = ctx.tables.length;
   const name = tNameOf(node);
   if (name) ctx.tableIds.set(name, idx);
+  processInlineExports(ctx, node, 1, idx);
   ctx.tables.push({ imported: false, node });
 }
 
@@ -679,6 +702,7 @@ function processTagDef(ctx, node) {
   const idx = ctx.tags.length;
   const name = tNameOf(node);
   if (name) ctx.tagIds.set(name, idx);
+  processInlineExports(ctx, node, 4, idx);
   const typeIdx = resolveTypeUse(ctx, tFindFirst(node, 'typeuse'));
   ctx.tags.push({ imported: false, typeIdx });
 }
@@ -1005,7 +1029,9 @@ function genElementSection(ctx) {
 }
 
 function usesDataIndexOps(ctx) {
-  return ctx.funcDefs.some(fd => tAllTerminals(fd).some(t => t.text === 'memory.init' || t.text === 'data.drop'));
+  return ctx.funcDefs.some(fd => tAllTerminals(fd).some(t =>
+    t.text === 'memory.init' || t.text === 'data.drop' ||
+    t.text === 'array.new_data' || t.text === 'array.init_data'));
 }
 
 function genDataCountSection(ctx) {
@@ -1154,12 +1180,13 @@ function emitFolded(node, ctx, localCtx) {
   // (op nested-instrs...)  where nested instrs are evaluated before op
   const op = getOpName(node);
   const head = tChildren(node).find(c => c.text && c.text !== '(' && c.text !== ')');
-  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try_table')
+  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try' || head.text === 'try_table')
     ? head.text
     : null;
   if (ctl === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
   if (ctl === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
   if (ctl === 'if') return emitIf(node, ctx, localCtx);
+  if (ctl === 'try') return emitTry(node, ctx, localCtx);
   if (ctl === 'try_table') return emitTryTable(node, ctx, localCtx);
   const parts = [];
   for (const si of tChildrenOfType(node, 'instr')) parts.push(emitInstrBuf(si, ctx, localCtx));
@@ -1172,17 +1199,41 @@ function emitFolded(node, ctx, localCtx) {
 function emitSeq(node, ctx, localCtx) {
   const op = getOpName(node);
   const head = tChildren(node).find(c => c.text && c.text !== '(' && c.text !== ')');
-  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try_table')
+  const ctl = head && (head.text === 'block' || head.text === 'loop' || head.text === 'if' || head.text === 'try' || head.text === 'try_table')
     ? head.text
     : null;
   if (ctl === 'block') return emitBlockLike(0x02, node, ctx, localCtx);
   if (ctl === 'loop') return emitBlockLike(0x03, node, ctx, localCtx);
   if (ctl === 'if') return emitIf(node, ctx, localCtx);
+  if (ctl === 'try') return emitTry(node, ctx, localCtx);
   if (ctl === 'try_table') return emitTryTable(node, ctx, localCtx);
   const nb = tChild(node, 'nonBlockInstr');
   if (nb) return emitNonBlock(nb, ctx, localCtx);
   if (!op) return Buffer.alloc(0);
   return Buffer.alloc(0);
+}
+
+function emitTry(node, ctx, localCtx) {
+  const bt = tChild(node, 'blockType');
+  const nestedCtx = withPushedLabel(localCtx, tNameOf(tChild(node, 'label')));
+  const parts = [Buffer.from([0x06]), emitBlockType(bt, ctx)];
+  for (const i of tChildrenOfType(node, 'instr')) {
+    parts.push(emitInstrBuf(i, ctx, nestedCtx));
+  }
+  for (const cc of tChildrenOfType(node, 'legacyCatchClause')) {
+    const firstTerm = tAllTerminals(cc)[0];
+    if (firstTerm && firstTerm.text === 'catch_all') {
+      parts.push(Buffer.from([0x19]));
+    } else {
+      parts.push(Buffer.from([0x07]));
+      parts.push(encodeULEB128(tResolveIdxNode(tFindFirst(cc, 'tagidx'), ctx.tagIds)));
+    }
+    for (const i of tChildrenOfType(cc, 'instr')) {
+      parts.push(emitInstrBuf(i, ctx, nestedCtx));
+    }
+  }
+  parts.push(Buffer.from([0x0b]));
+  return Buffer.concat(parts);
 }
 
 function emitTryTable(node, ctx, localCtx) {
@@ -1224,15 +1275,27 @@ function emitTryTable(node, ctx, localCtx) {
 
 function emitBlockType(btNode, ctx) {
   if (!btNode) return Buffer.from([0x40]);
+  const tu = tChild(btNode, 'typeuse');
+  if (tu) {
+    const hasExplicitType = !!tChild(tu, 'typeidx');
+    const paramDecls = tChildrenOfType(tu, 'paramDecl');
+    const resultVts = tChildrenOfType(tu, 'resultDecl').flatMap(rd => tChildrenOfType(rd, 'valueType'));
+    if (hasExplicitType || paramDecls.length > 0 || resultVts.length > 1) {
+      return encodeSLEB33Index(resolveTypeUse(ctx, tu));
+    }
+    if (resultVts.length === 1) {
+      return encodeValueType(parseValueType(resultVts[0]), ctx);
+    }
+    return Buffer.from([0x40]);
+  }
   const rd = tChild(btNode, 'resultDecl') || tChild(btNode, 'resultTypes');
   if (rd) {
-    const vt = tFindFirst(rd, 'valueType');
-    if (vt) return encodeValueType(parseValueType(vt), ctx);
+    const vts = tChildrenOfType(rd, 'valueType');
+    if (vts.length > 1) return encodeSLEB33Index(findOrAddFuncType(ctx, { kind: 'func', params: [], results: vts.map(parseValueType) }));
+    if (vts.length === 1) return encodeValueType(parseValueType(vts[0]), ctx);
   }
   const vt = tFindFirst(btNode, 'valueType');
   if (vt) return encodeValueType(parseValueType(vt), ctx);
-  const tu = tChild(btNode, 'typeuse');
-  if (tu) return encodeSLEB128(resolveTypeUse(ctx, tu));
   return Buffer.from([0x40]);
 }
 
@@ -1539,10 +1602,10 @@ function emitNonBlock(node, ctx, localCtx) {
 
   if (op === 'i32.const') {
     const t = terms.find(t => t.text && /^-?\d/.test(t.text));
-    parts.push(encodeSLEB128(t ? parseNum(t.text) : 0));
+    parts.push(encodeSLEB128(t ? BigInt.asIntN(32, parseBigInt(t.text)) : 0n));
   } else if (op === 'i64.const') {
     const t = terms.find(t => t.text && /^-?\d/.test(t.text));
-    parts.push(encodeSLEB128(t ? parseNum(t.text) : 0));
+    parts.push(encodeSLEB128(t ? BigInt.asIntN(64, parseBigInt(t.text)) : 0n));
   } else if (op === 'f32.const') {
     const value = tFindFirst(node, 'floatValue');
     parts.push(encodeWatFloat(value && tAllTerminals(value).map(t => t.text).join(''), 32));
@@ -1639,10 +1702,10 @@ function normalizeSignedConstImmediates(sourceWat) {
     return `i32.const ${wrapped.toString()}`;
   });
 
-  // Accept signed integer literals in i64.const with equivalent stack semantics.
-  // Current parser rejects signed integer immediate tokens in this form.
+  // Accept signed integer literals in i64.const while keeping exact i64 bits.
   out = out.replace(/\bi64\.const\s+-(\d+)\b/g, (_, n) => {
-    return `i64.const 0 i64.const ${n} i64.sub`;
+    const wrapped = (0x10000000000000000n - BigInt(n)) & 0xffffffffffffffffn;
+    return `i64.const ${wrapped.toString()}`;
   });
 
   return out;
@@ -1702,6 +1765,7 @@ class WatAssembler {
     const ctx = new ModuleContext(tree);
     buildSymbolTables(ctx);
     resolveExportsAndStart(ctx);
+    const codeSection = genCodeSection(ctx);
     const sections = [
       Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
       genTypeSection(ctx),
@@ -1715,7 +1779,7 @@ class WatAssembler {
       genStartSection(ctx),
       genElementSection(ctx),
       genDataCountSection(ctx),
-      genCodeSection(ctx),
+      codeSection,
       genDataSection(ctx),
     ].filter(Boolean);
     return Buffer.concat(sections);

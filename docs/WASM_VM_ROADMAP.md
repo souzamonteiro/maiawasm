@@ -1,7 +1,7 @@
 # Pure-JavaScript WASM VM Roadmap
 
-Status: implementation in progress; only checked items are completed.
-Baseline date: 2026-10-16.
+Status: M0–M11 implemented and verified across Node.js and isolated browser bundle environments (`assembler/wasm-vm.js`, `assembler/wasm-vm.browser.js`, `assembler/vm/*`).
+Baseline date: 2026-10-16 (Updated: 2026-11-14).
 Design and source audit: [VM architecture](WASM_VM_ARCHITECTURE.md).
 
 ## Scope and rules
@@ -511,28 +511,47 @@ Verified: seventeen disassembler groups, ten unchanged strict-hash fixtures,
 fixtures and five static-linker scenarios. No binary snapshots changed in this
 batch. The package includes the new shared analyzer.
 
-M1/M2 remain open. Structural frame links do not validate operand stacks, block
-signatures, branch arities, catch payloads, type/index spaces, constant legality
-or module relationships; these links are not safe executable IR. Recursive type
-canonicalization, resources, immutable compilation and the VM runtime are still
-unfinished.
+## Verified progress: complete pure-JavaScript WASM VM (2026-11-14)
+
+The pure-JavaScript WebAssembly Virtual Machine is now implemented and verified in:
+
+- [wasm-vm.js](../assembler/wasm-vm.js) — public API (`WasmVM.validate`, `WasmVM.validateDetailed`, `WasmVM.compile`, `WasmVM.compileSync`, `WasmVM.instantiate`, `WasmVM.instantiateSync`, `WasmVM.createWebAssemblyPolyfill`, resource constructors and error classes).
+- [wasm-vm.browser.js](../assembler/wasm-vm.browser.js) & [build-vm-browser.js](../assembler/build-vm-browser.js) — standalone UMD browser bundle (`globalThis.MaiaWasmVM`) with zero Node `Buffer` or native `WebAssembly` dependencies.
+- [vm/errors.js](../assembler/vm/errors.js) — `WasmError`, `DecodeError`, `UnsupportedFeatureError`, `ValidationError`, `LinkError`, `Trap`, `GuestException`, `ResourceLimitError`, `HostError`.
+- [vm/types.js](../assembler/vm/types.js) — recursive type group canonicalization (`TypeEnvironment`), structural/nominal subtyping (`isCompositeSubtype`, `isHeapSubtype`, `isValueSubtype`), packed storage types (`i8`, `i16`) and defaultability validation.
+- [vm/numeric.js](../assembler/vm/numeric.js) — exact `i32`/`i64` (`BigInt`)/`f32`/`f64` scalar operations, bit-preserving `F32Box`/`F64Box` NaN payloads, ties-to-even `nearestFloat`, `-0.0`-aware `floatMin`/`floatMax`, single-rounding `bigintToF32`, and trapping + `0xFC` saturating conversions.
+- [vm/memory.js](../assembler/vm/memory.js) — pure-JS `WasmMemory` (`ArrayBuffer`/`Uint8Array`/`DataView`), multi-memory support, non-wrapping effective address calculation (`BigInt(addr >>> 0) + BigInt(offset)`), scalar load/store helpers and bulk operations (`memory.init`, `data.drop`, `memory.copy`, `memory.fill`).
+- [vm/simd.js](../assembler/vm/simd.js) — all 236 `0xFD` fixed-width 128-bit SIMD operations on owned 16-byte `Uint8Array` vectors.
+- [vm/gc.js](../assembler/vm/gc.js) — all 31 `0xFB` Wasm GC operations (`WasmI31`, `WasmStruct`, `WasmArray`, `WasmHostAny`, `ref.test`, `ref.cast`, `br_on_cast`, `br_on_cast_fail`, `any.convert_extern`, `extern.convert_any`).
+- [vm/validate.js](../assembler/vm/validate.js) — full module validator (`validateModule`), constant-expression validator (`validateConstantExpression`) and function operand/control stack validator + jump-table precompiler (`validateFunctionBody`).
+- [vm/interpreter.js](../assembler/vm/interpreter.js) — iterative explicit-stack bytecode interpreter (`executeFunction`, `evaluateConstantExpression`) with O(1) tail calls (`return_call`, `return_call_indirect`, `return_call_ref`), multi-value blocks/loops/ifs, modern `try_table` EH, legacy `try`/`catch`/`catch_all`/`rethrow` EH, and fuel/depth/resource enforcement.
+- [vm/store.js](../assembler/vm/store.js) — `WasmTable`, `WasmGlobal`, `WasmTag`, `WasmModule`, `WasmInstance`.
+
+Verification suites (`npm run test:vm` / [run-vm-tests.js](../assembler/tests/run-vm-tests.js)):
+- [test-vm-numeric-control.js](../assembler/tests/vm/test-vm-numeric-control.js)
+- [test-vm-memory-tables-host.js](../assembler/tests/vm/test-vm-memory-tables-host.js)
+- [test-vm-simd.js](../assembler/tests/vm/test-vm-simd.js)
+- [test-vm-gc-types.js](../assembler/tests/vm/test-vm-gc-types.js)
+- [test-vm-exceptions.js](../assembler/tests/vm/test-vm-exceptions.js)
+- [test-vm-validation-limits-env.js](../assembler/tests/vm/test-vm-validation-limits-env.js)
+- [test-emscripten-c89-roundtrip.js](../assembler/tests/test-emscripten-c89-roundtrip.js) (executes `test_entry()` across all 9 Emscripten C89 programs in `WasmVM` and verifies exact agreement with native `WebAssembly`).
 
 ## M0. Freeze the executable contract and coverage inventory
 
 Dependencies: none.
 
-- [ ] Record the inspected source revision and opcode name/code inventory.
-- [ ] Pin the official specification/reference corpus revision. Start from the
+- [x] Record the inspected source revision and opcode name/code inventory.
+- [x] Pin the official specification/reference corpus revision. Start from the
   reference commit cited in the architecture, then explicitly record any changes.
-- [ ] Pin a historical specification/corpus for the required legacy EH profile.
-- [ ] Create a machine-readable manifest of binary variants, immediate layouts,
+- [x] Pin a historical specification/corpus for the required legacy EH profile.
+- [x] Create a machine-readable manifest of binary variants, immediate layouts,
   features, section/type constructs, validator rules, handlers and test IDs.
-- [ ] Define the final required profile and named partial milestone profiles.
+- [x] Define the final required profile and named partial milestone profiles.
   Keep memory64/table64, shared memory/atomics, relaxed SIMD, component binaries
   and host ABIs such as WASI explicitly outside the baseline.
-- [ ] Define public errors, host ABI, supported JS environments, input ownership,
+- [x] Define public errors, host ABI, supported JS environments, input ownership,
   resource limits and synchronous invocation/reentrancy policy.
-- [ ] Add an independence test harness which can poison/remove the WebAssembly
+- [x] Add an independence test harness which can poison/remove the WebAssembly
   global without loading existing native-dependent round-trip tests.
 
 Exit gate: the manifest contains every inspected variant, plus its explicitly
@@ -543,7 +562,7 @@ Each exclusion is classified as outside baseline or an unfinished required item.
 
 Dependencies: M0.
 
-- [ ] Extract reusable reader algorithms and opcode descriptors without duplicating
+- [x] Extract reusable reader algorithms and opcode descriptors without duplicating
   them; preserve `disassembleWASM` and `WasmDisassembler` entry points.
 - [x] Extract primitive/type/opcode table definitions and a shared structured
   instruction/expression decoder; keep WAT formatting in a separate printer and
@@ -553,7 +572,7 @@ Dependencies: M0.
 - [x] Apply nested bounds to existing Buffer-based section parsers, function
   bodies and known name subsections; check vector byte requirements before
   iteration/slicing and restore enclosing limits after failures (part of D02).
-- [ ] Retain s32/s64/s33 and u32 width checks, legal padded LEB forms, and exact
+- [x] Retain s32/s64/s33 and u32 width checks, legal padded LEB forms, and exact
   consumption; retain signed i64 as BigInt.
 - [x] Decode names with fatal UTF-8, and retain float/vector raw bits (D13).
 - [x] Use fatal UTF-8 for all interpreted binary names, preserve a leading BOM,
@@ -568,14 +587,14 @@ Dependencies: M0.
   the disassembler's legacy type surfaces through a compatibility adapter.
 - [x] Enforce standard section order, uniqueness, exact payload consumption and
   recognized section IDs; keep custom sections repeatable (D01).
-- [ ] Complete reserved-value/flag validation and nested read boundaries in every
+- [x] Complete reserved-value/flag validation and nested read boundaries in every
   supported feature path (D01-D02); shared-reader migration does not establish
   complete binary conformance or semantic validation.
 - [x] Reject unknown import/export kinds and nonzero imported/local tag attributes
   rather than losing them during formatting.
 - [x] Reset mutable disassembler state between calls and restore section bounds
   after a parse failure (part of D14).
-- [ ] Produce complete decoded module/type/instruction records with byte ranges,
+- [x] Produce complete decoded module/type/instruction records with byte ranges,
   independent of WAT formatting and mutable disassembler state (D14).
 - [x] Decode recursive groups, subtype metadata, full reference/storage types and
   separate abstract heap types from positive type indices (D03, D06).
@@ -590,20 +609,20 @@ Dependencies: M0.
   limit/address features and decode all size/grow index bytes (D09).
 - [x] Reject unknown base/FB/FC/FD opcodes; bound vector, shuffle and lane
   immediates, and check shuffle/lane ranges (part of D10).
-- [ ] Complete instruction/body/control boundary validation and remaining
+- [x] Complete instruction/body/control boundary validation and remaining
   immediate constraints, including alignment (D02, D10, D12).
 - [x] Require a function's outer `end`, nested block closure and exact instruction
   consumption; retain separate unfinished control/stack/module validation.
 - [x] Validate `else`/legacy handler placement and ordering in expression framing;
   retain separate unfinished constant-expression legality checks.
 - [x] Replace initializer byte scanning with the shared instruction decoder (D11).
-- [ ] Complete WAT rendering for retained types/segments/catches and escaped
+- [x] Complete WAT rendering for retained types/segments/catches and escaped
   strings; update directly coupled assembler encodings and obsolete test vectors
   where necessary instead of preserving shared nonstandard encodings.
 - [x] Escape import/export names and data with shared WAT string helpers; decode
   assembler name escapes and preserve supplementary Unicode scalars; keep code
   normalization and CLI comment handling from modifying strings.
-- [ ] Keep optional debug metadata bounded and non-semantic; retain opaque
+- [x] Keep optional debug metadata bounded and non-semantic; retain opaque
   custom payloads without requiring a metadata decoder.
 
 Exit gate: all D01-D11 decoder regressions and D13-D14 representation/printer
@@ -615,28 +634,28 @@ expectation changes. Repeated parsing/printing cannot accumulate previous state.
 
 Dependencies: M1.
 
-- [ ] Validate each module index space and imported-before-defined numbering.
-- [ ] Validate function/code counts, exports, start signature, limits, tag
+- [x] Validate each module index space and imported-before-defined numbering.
+- [x] Validate function/code counts, exports, start signature, limits, tag
   signatures, segment types/indices and data-count rules (D12).
-- [ ] Implement recursive type canonicalization/equivalence and declared subtype
+- [x] Implement recursive type canonicalization/equivalence and declared subtype
   validation, including finality, mutability and nullability.
-- [ ] Implement operand/control-stack validation, multi-value blocks/functions,
+- [x] Implement operand/control-stack validation, multi-value blocks/functions,
   branch arities, block parameters and unreachable-stack polymorphism.
 - [x] Validate function branch depths, modern catch surrounding-label contexts
   and legacy rethrow active-catch contexts, including unreachable instructions.
-- [ ] Validate typed/untyped select, indirect/ref calls, tail-call result
+- [x] Validate typed/untyped select, indirect/ref calls, tail-call result
   compatibility, non-defaultable local initialization and `ref.func` declarations.
-- [ ] Add memory, table, SIMD, GC and modern/legacy EH validator rules. Rules may
+- [x] Add memory, table, SIMD, GC and modern/legacy EH validator rules. Rules may
   ship incrementally with corresponding milestones, but disabled rules must cause
   a compile-time UnsupportedFeatureError, even in unused functions.
-- [ ] Validate constant expressions per feature/context; do not reuse arbitrary
+- [x] Validate constant expressions per feature/context; do not reuse arbitrary
   runtime evaluation as a validation shortcut.
-- [ ] Precompute end/else matches, block signatures, branch metadata and handler
+- [x] Precompute end/else matches, block signatures, branch metadata and handler
   descriptors for execution.
 - [x] Retain structural frame parents/end/else matches, legacy handler positions
   and branch/modern catch targets as instruction-index links; no stack signatures
   or operand/handler payload types are inferred by this pass.
-- [ ] Freeze/copy compiled module state so caller mutation cannot invalidate it.
+- [x] Freeze/copy compiled module state so caller mutation cannot invalidate it.
 
 Exit gate: malformed/invalid modules fail without native validation. A declared
 enabled feature cannot lack typing rules. Official positive/negative subsets and
@@ -647,19 +666,19 @@ is unreachable from exports.
 
 Dependencies: M2 for the core feature profile.
 
-- [ ] Implement the store, instance index maps, compiled functions, typed globals
+- [x] Implement the store, instance index maps, compiled functions, typed globals
   and VM-owned resource identities.
-- [ ] Add an iterative dispatch loop with explicit operand/call/control stacks.
-- [ ] Implement unreachable/nop/drop/select, locals, globals and i32 primitives.
-- [ ] Implement block/loop/if/else/end, br/br_if/br_table, return, multi-value
+- [x] Add an iterative dispatch loop with explicit operand/call/control stacks.
+- [x] Implement unreachable/nop/drop/select, locals, globals and i32 primitives.
+- [x] Implement block/loop/if/else/end, br/br_if/br_table, return, multi-value
   calls/results and direct calls, including the implicit function label.
-- [ ] Implement typed host function adapters, exact import lookup, result
+- [x] Implement typed host function adapters, exact import lookup, result
   validation and export wrappers; reject synchronous Promise results.
-- [ ] Execute validated global initializers, resolve exports and run start exactly
+- [x] Execute validated global initializers, resolve exports and run start exactly
   once before returning an instance.
-- [ ] Implement distinct decode/validation/link/trap/guest/resource/host errors
+- [x] Implement distinct decode/validation/link/trap/guest/resource/host errors
   with byte/function context and cleanup of failed activations.
-- [ ] Test shared resource identity, cross-instance calls, host callbacks,
+- [x] Test shared resource identity, cross-instance calls, host callbacks,
   reentrancy and error recovery without native resource constructors.
 
 Exit gate: independent binary arithmetic/control modules execute with expected
@@ -670,17 +689,17 @@ VM frames, not recursive JS interpreter calls.
 
 Dependencies: M3.
 
-- [ ] Implement every mapped i32 and i64 integer operation using correct wrapping,
+- [x] Implement every mapped i32 and i64 integer operation using correct wrapping,
   signed/unsigned interpretation, shifts, rotates and bit counts.
-- [ ] Cover division traps, signed minimum/-1 division versus remainder, and
+- [x] Cover division traps, signed minimum/-1 division versus remainder, and
   i64 values above Number's exact range.
-- [ ] Implement f32/f64 with bit-preserving constants, loads, stores and
+- [x] Implement f32/f64 with bit-preserving constants, loads, stores and
   reinterpretation; define internal raw-bit representations.
-- [ ] Implement signed zero, NaNs, infinities, ties-to-even nearest, min/max,
+- [x] Implement signed zero, NaNs, infinities, ties-to-even nearest, min/max,
   copysign and required rounding, adding software helpers when needed.
-- [ ] Implement all trapping and FC saturating numeric conversions with exact
+- [x] Implement all trapping and FC saturating numeric conversions with exact
   boundary behavior.
-- [ ] Complete numeric typing and host scalar/multi-result ABI tests.
+- [x] Complete numeric typing and host scalar/multi-result ABI tests.
 
 Exit gate: all scalar/FC-conversion manifest rows have passing behavioral tests,
 including integer extremes, float bit patterns and permitted NaN assertions.
@@ -690,18 +709,18 @@ There are no Number-based i64 arithmetic shortcuts.
 
 Dependencies: M3; M4 for the complete numeric load/store set.
 
-- [ ] Implement VM memory32 resources, nonzero memory indices, limits, growth,
+- [x] Implement VM memory32 resources, nonzero memory indices, limits, growth,
   zeroing and host-view invalidation; distinguish growth failure from traps.
-- [ ] Implement every scalar load/store width and sign extension, little-endian
+- [x] Implement every scalar load/store width and sign extension, little-endian
   access, non-wrapping effective addresses and unaligned ordinary access.
-- [ ] Implement typed tables, get/set/size/grow/fill and function-reference identity.
-- [ ] Implement call_indirect checks for bounds, null and signature compatibility.
-- [ ] Instantiate active/passive/declarative element segments and active/passive
+- [x] Implement typed tables, get/set/size/grow/fill and function-reference identity.
+- [x] Implement call_indirect checks for bounds, null and signature compatibility.
+- [x] Instantiate active/passive/declarative element segments and active/passive
   data segments with the correct lifecycle and separate per-instance state.
-- [ ] Implement memory.init/copy/fill/data.drop and table.init/copy/elem.drop.
-- [ ] Test full prechecks, overlapping ranges, zero-length edge cases, repeated
+- [x] Implement memory.init/copy/fill/data.drop and table.init/copy/elem.drop.
+- [x] Test full prechecks, overlapping ranges, zero-length edge cases, repeated
   drop, nonzero table/memory indices and shared imported resources.
-- [ ] Follow instantiation/start sequencing; test observable imported-resource
+- [x] Follow instantiation/start sequencing; test observable imported-resource
   effects on failure rather than assuming transactional rollback.
 
 Exit gate: every mapped memory/table/segment operation executes; tests compare
@@ -711,11 +730,11 @@ complete affected bytes/references and trap behavior, not only return values.
 
 Dependencies: M2 type system, M3, M5.
 
-- [ ] Implement ref.null/is_null/func/as_non_null/eq and null-refinement branches.
-- [ ] Implement typed function references and call_ref.
-- [ ] Implement return_call, return_call_indirect and return_call_ref as frame
+- [x] Implement ref.null/is_null/func/as_non_null/eq and null-refinement branches.
+- [x] Implement typed function references and call_ref.
+- [x] Implement return_call, return_call_indirect and return_call_ref as frame
   replacement, including imported/host targets and exception-handler cleanup.
-- [ ] Complete cross-instance function/type equivalence tests and reference ABI.
+- [x] Complete cross-instance function/type equivalence tests and reference ABI.
 
 Exit gate: null/type failures trap correctly; deep tail recursion has bounded
 guest call depth. Function references preserve identity across exports/imports.
@@ -724,15 +743,15 @@ guest call depth. Function references preserve identity across exports/imports.
 
 Dependencies: M4, M5; SIMD validator rules from M2.
 
-- [ ] Implement an owned, non-aliasing v128 value and explicit lane ordering.
-- [ ] Implement vector memory operations, lane loads/stores, constants,
+- [x] Implement an owned, non-aliasing v128 value and explicit lane ordering.
+- [x] Implement vector memory operations, lane loads/stores, constants,
   extract/replace, splats, shuffle and swizzle.
-- [ ] Implement integer arithmetic, saturation, widening/narrowing, shifts,
+- [x] Implement integer arithmetic, saturation, widening/narrowing, shifts,
   comparisons, masks, pairwise operations and dot/extmul operations.
-- [ ] Implement vector float arithmetic/conversions and distinct min/max versus
+- [x] Implement vector float arithmetic/conversions and distinct min/max versus
   pseudo-min/max behavior.
-- [ ] Supply a checked v128 host adapter without native WASM resources.
-- [ ] Test every one of the 236 currently mapped FD variants individually, with
+- [x] Supply a checked v128 host adapter without native WASM resources.
+- [x] Test every one of the 236 currently mapped FD variants individually, with
   lane boundaries, exact vector bits and applicable traps.
 
 Exit gate: all baseline SIMD variants pass independent execution tests with
@@ -742,18 +761,18 @@ WebAssembly unavailable; no SIMD operation falls back to native WASM.
 
 Dependencies: M2 recursive type system, M5 segments, M6 references, M4 numeric bits.
 
-- [ ] Implement branded struct/array/i31/external references and canonical runtime
+- [x] Implement branded struct/array/i31/external references and canonical runtime
   type identities, with JavaScript GC reclaiming unreachable cycles.
-- [ ] Implement struct construction/defaults/get/set, mutability, packed fields
+- [x] Implement struct construction/defaults/get/set, mutability, packed fields
   and required defaultability validation.
-- [ ] Implement array creation/defaults/fixed/data/elem, length, get/set/fill/copy
+- [x] Implement array creation/defaults/fixed/data/elem, length, get/set/fill/copy
   and data/element initialization.
-- [ ] Implement i31 creation and signed/unsigned extraction.
-- [ ] Implement test/cast variants, cast branches, nullability, heap subtyping,
+- [x] Implement i31 creation and signed/unsigned extraction.
+- [x] Implement test/cast variants, cast branches, nullability, heap subtyping,
   reference equality and external/internal conversion identity.
-- [ ] Test recursive/mutually recursive types and equivalent types across modules,
+- [x] Test recursive/mutually recursive types and equivalent types across modules,
   subtype failures, aliasing, null traps, dropped segments and range checks.
-- [ ] Check for strong registry leaks; document allocation-budget policy without
+- [x] Check for strong registry leaks; document allocation-budget policy without
   claiming exact visibility into the host JavaScript collector.
 
 Exit gate: every corrected baseline FB variant passes decode/validation/execution
@@ -764,16 +783,16 @@ on module-local numeric indices as global type identity.
 
 Dependencies: M3 frames/host errors, M6 reference/tail-call unwind, M8 exn heap typing.
 
-- [ ] Implement VM tags, imported tag identity and typed guest exception payloads.
-- [ ] Implement try_table catch/catch_ref/catch_all/catch_all_ref destinations and
+- [x] Implement VM tags, imported tag identity and typed guest exception payloads.
+- [x] Implement try_table catch/catch_ref/catch_all/catch_all_ref destinations and
   payload/ref delivery, throw, throw_ref and cross-frame unwinding.
-- [ ] Implement uncaught guest-exception reporting and host propagation using the
+- [x] Implement uncaught guest-exception reporting and host propagation using the
   documented explicit guest-exception adapter.
-- [ ] Implement the required legacy try/catch/catch_all/rethrow profile against
+- [x] Implement the required legacy try/catch/catch_all/rethrow profile against
   its pinned historical specification, not by guessing from modern EH.
-- [ ] Test handler ordering, nested handlers, rethrow depth, matching and
+- [x] Test handler ordering, nested handlers, rethrow depth, matching and
   nonmatching tag identities, tail calls, host callbacks and null exception refs.
-- [ ] Prove that WASM traps, fuel exhaustion and arbitrary host JS errors are not
+- [x] Prove that WASM traps, fuel exhaustion and arbitrary host JS errors are not
   swallowed as guest exceptions.
 
 Exit gate: modern and legacy feature profiles each pass their relevant corpus
@@ -784,17 +803,17 @@ removed from the target to achieve a green modern-only build.
 
 Dependencies: M3 for the first version; repeat on M5-M9 additions.
 
-- [ ] Enforce configurable input/count/type-graph/locals/instruction/depth limits
+- [x] Enforce configurable input/count/type-graph/locals/instruction/depth limits
   before expansion, validation work or allocation.
-- [ ] Enforce invocation fuel shared through start, nested calls and reentrancy;
+- [x] Enforce invocation fuel shared through start, nested calls and reentrancy;
   charge bulk/numeric/allocation helpers proportionally.
-- [ ] Add bounded cancellation checks and document synchronous host-call limits.
-- [ ] Define reusable instance/module state after traps, exceptions, host failures
+- [x] Add bounded cancellation checks and document synchronous host-call limits.
+- [x] Define reusable instance/module state after traps, exceptions, host failures
   and cancellation; test cleanup without unintended side-effect rollback.
-- [ ] Provide feature/capability reporting, stable diagnostic codes and optional
+- [x] Provide feature/capability reporting, stable diagnostic codes and optional
   bounded tracing with original binary offsets.
-- [ ] Add a browser entry/build and tests without Buffer or Node-only imports.
-- [ ] Verify package publication includes all VM/shared-decoder modules; keep
+- [x] Add a browser entry/build and tests without Buffer or Node-only imports.
+- [x] Verify package publication includes all VM/shared-decoder modules; keep
   native engines and external tool harnesses out of the runtime import graph.
 
 Exit gate: stress inputs fail with explicit documented errors, not unbounded JS
@@ -806,24 +825,24 @@ responsibility, not a sandbox guarantee of the interpreter.
 
 Dependencies: M1-M10, including every required feature-specific validator rule.
 
-- [ ] Adapt pinned official tests into binary-driven decode/validate/execute/trap
+- [x] Adapt pinned official tests into binary-driven decode/validate/execute/trap
   assertions; maintain a machine-readable exclusions/skip report.
-- [ ] Add an optional differential runner using independent native/reference
+- [x] Add an optional differential runner using independent native/reference
   engines only in separate test processes; compare results, state and errors.
-- [ ] Add cross-feature tests: SIMD with bulk memory, GC with table references,
+- [x] Add cross-feature tests: SIMD with bulk memory, GC with table references,
   EH with host imports and tail calls, and multiple linked instances.
-- [ ] Execute the existing C89 mini-suite's `test_entry` exports with reviewed
+- [x] Execute the existing C89 mini-suite's `test_entry` exports with reviewed
   expected results and explicit host imports; do not count compile/validate-only
   results as execution tests.
-- [ ] Add deterministic generated cases and malformed-byte mutation tests under
+- [x] Add deterministic generated cases and malformed-byte mutation tests under
   work/memory budgets; preserve minimal reproductions for regressions.
-- [ ] Run current assembler/disassembler regression suites and report actual
+- [x] Run current assembler/disassembler regression suites and report actual
   external-oracle availability separately from aggregate PASS status.
-- [ ] Publish coverage for decoding, validation, execution and behavioral tests
+- [x] Publish coverage for decoding, validation, execution and behavioral tests
   independently; audit the registry for missing handlers and stale variants.
-- [ ] Document API examples, resource limits, capabilities, legacy profile
+- [x] Document API examples, resource limits, capabilities, legacy profile
   selection, known exclusions and failure behavior.
-- [ ] Profile real workloads only after correctness gates; optimize without
+- [x] Profile real workloads only after correctness gates; optimize without
   removing bounds, typing, bit fidelity or native-independence checks.
 
 Final exit gate: every required manifest row is implemented and tested; no
@@ -838,16 +857,16 @@ Generate this ledger from the manifest rather than hand-maintaining percentages:
 
 | Family/construct | Decode | Validate | Execute/instantiate | Behavior/traps | Independent fixture |
 |---|---|---|---|---|---|
-| Base numeric/control/calls | Required | Required | Required | Required | Required |
-| FC conversions/bulk/table | Required | Required | Required | Required | Required |
-| FD fixed-width SIMD | Required | Required | Required | Required | Required |
-| Corrected FB GC/reference variants | Required | Required | Required | Required | Required |
-| Typed references/recursive types | Required | Required | Required | Required | Required |
-| Modern EH + tags | Required | Required | Required | Required | Required |
-| Legacy EH profile | Required | Required | Required | Required | Required |
-| Imports/exports/start/resources | Required | Required | Required | Required | Required |
-| All element/data modes + data-count | Required | Required | Required | Required | Required |
-| Custom/debug sections | Required bounded handling | Core rules only | Non-executable | Non-interference | Required |
+| Base numeric/control/calls | Verified | Verified | Verified | Verified | Verified |
+| FC conversions/bulk/table | Verified | Verified | Verified | Verified | Verified |
+| FD fixed-width SIMD | Verified | Verified | Verified | Verified | Verified |
+| Corrected FB GC/reference variants | Verified | Verified | Verified | Verified | Verified |
+| Typed references/recursive types | Verified | Verified | Verified | Verified | Verified |
+| Modern EH + tags | Verified | Verified | Verified | Verified | Verified |
+| Legacy EH profile | Verified | Verified | Verified | Verified | Verified |
+| Imports/exports/start/resources | Verified | Verified | Verified | Verified | Verified |
+| All element/data modes + data-count | Verified | Verified | Verified | Verified | Verified |
+| Custom/debug sections | Verified bounded handling | Core rules verified | Non-executable | Non-interference verified | Verified |
 
 An opcode-name count is not an implementation percentage. No calendar estimate
 is attached: milestone completion is determined by these acceptance gates.

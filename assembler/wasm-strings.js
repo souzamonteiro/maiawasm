@@ -1,6 +1,11 @@
 'use strict';
 
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+const utf8Encoder = new TextEncoder();
+
+function toByteBuffer(bytes) {
+  return typeof Buffer !== 'undefined' ? Buffer.from(bytes) : Uint8Array.from(bytes);
+}
 
 function decodeUTF8(bytes, context = 'string') {
   try {
@@ -21,7 +26,7 @@ function quoteWatBytes(bytes) {
 }
 
 function quoteWatName(name) {
-  return quoteWatBytes(Buffer.from(name, 'utf8'));
+  return quoteWatBytes(utf8Encoder.encode(name));
 }
 
 function decodeWatString(raw) {
@@ -30,7 +35,7 @@ function decodeWatString(raw) {
   const bytes = [];
   const appendScalar = value => {
     if (value < 0x80) bytes.push(value);
-    else for (const byte of Buffer.from(String.fromCodePoint(value), 'utf8')) bytes.push(byte);
+    else for (const byte of utf8Encoder.encode(String.fromCodePoint(value))) bytes.push(byte);
   };
   const escapes = { n: 10, t: 9, r: 13, '"': 34, "'": 39, '\\': 92 };
   for (let i = 0; i < text.length;) {
@@ -63,7 +68,7 @@ function decodeWatString(raw) {
       i += value > 0xffff ? 2 : 1;
     }
   }
-  return Buffer.from(bytes);
+  return toByteBuffer(bytes);
 }
 
 module.exports = { decodeUTF8, quoteWatBytes, quoteWatName, decodeWatString };

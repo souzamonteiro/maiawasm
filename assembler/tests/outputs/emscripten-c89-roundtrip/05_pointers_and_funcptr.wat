@@ -1,24 +1,11 @@
 (module
 
-  (type (func
-    (param i32 i32)
-    (result i32)
-  ))
-  (type (func
-  ))
-  (type (func
-    (param i32 i32)
-  ))
-  (type (func
-    (param i32 i32 i32)
-    (result i32)
-  ))
-  (type (func
-    (result i32)
-  ))
-  (type (func
-    (param i32)
-  ))
+  (type (func (param i32 i32) (result i32)))
+  (type (func))
+  (type (func (param i32 i32)))
+  (type (func (param i32 i32 i32) (result i32)))
+  (type (func (result i32)))
+  (type (func (param i32)))
 
   (table 2 2 funcref)
 
@@ -38,7 +25,7 @@
   (export "_emscripten_stack_restore" (func 9))
   (export "emscripten_stack_get_current" (func 10))
 
-  (elem (i32.const 1) func 1)
+  (elem (offset i32.const 1) func 1)
 
   (func (type 1)
     call 5

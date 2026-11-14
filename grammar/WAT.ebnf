@@ -45,21 +45,22 @@ mutField          ::= '(' 'mut' ')'
 storagetype       ::= valueType | packType
 packType          ::= 'i8' | 'i16'
 
-tagDef            ::= '(' 'tag' id? tagType ')'
+tagDef            ::= '(' 'tag' id? inlineExport* tagType ')'
 tagType           ::= typeuse
 
-globalDef         ::= '(' 'global' id? globalType expr ')'
+globalDef         ::= '(' 'global' id? inlineExport* globalType expr ')'
 globalType        ::= valueType | '(' 'mut' valueType ')'
 
-memDef            ::= '(' 'memory' id? limits ')'
+memDef            ::= '(' 'memory' id? inlineExport* limits ')'
 
-tableDef          ::= '(' 'table' id? limits reftype ')'
-                    | '(' 'table' id? limits reftype tableExpr ')'
+tableDef          ::= '(' 'table' id? inlineExport* limits reftype ')'
+                    | '(' 'table' id? inlineExport* limits reftype tableExpr ')'
 
 tableExpr         ::= expr
 
-funcDef           ::= '(' 'func' id? typeuse? localDecl* expr ')'
+funcDef           ::= '(' 'func' id? inlineExport* typeuse? localDecl* expr ')'
 localDecl         ::= '(' 'local' id? valueType ')' | '(' 'local' valueType+ ')'
+inlineExport      ::= '(' 'export' string ')'
 
 importDef         ::= '(' 'import' string string importDesc ')'
 importDesc        ::= '(' 'func' id? typeuse? ')'
@@ -106,6 +107,7 @@ instr             ::= foldedInstr
 foldedInstr       ::= '(' 'block' label? blockType? instr* ')'
                     | '(' 'loop' label? blockType? instr* ')'
                     | '(' 'if' label? blockType? instr* ('(' 'then' instr* ')' ('(' 'else' instr* ')')?)? ')'
+                    | '(' 'try' label? blockType? instr* legacyCatchClause* ')'
                     | '(' 'try_table' label? blockType? catchClause* instr* ')'
                     | '(' nonBlockInstr instr* ')'
 
@@ -114,11 +116,15 @@ catchClause       ::= '(' 'catch' tagidx labelidx ')'
                     | '(' 'catch_all' labelidx ')'
                     | '(' 'catch_all_ref' labelidx ')'
 
+legacyCatchClause ::= 'catch' tagidx instr*
+                    | 'catch_all' instr*
+
 /* Sequential (unparenthesized) instructions */
 seqInstr          ::= nonBlockInstr
                     | 'block' label? blockType? instr* 'end' id?
                     | 'loop' label? blockType? instr* 'end' id?
                     | 'if' label? blockType? instr* ('else' id? instr*)? 'end' id?
+                    | 'try' label? blockType? instr* legacyCatchClause* 'end' id?
                     | 'try_table' label? blockType? catchClause* instr* 'end' id?
 
 /* All plain instructions usable in both sequential and folded context */
@@ -199,12 +205,14 @@ nonBlockInstr     ::= 'nop'
                     | 'br_on_cast' labelidx reftype reftype
                     | 'br_on_cast_fail' labelidx reftype reftype
                     | 'throw' tagidx
+                    | 'rethrow' labelidx
 
 /* Numeric/SIMD/load/store: lexer produces dottedName for opcodes like
  * i32.const, i32.add, f64.sqrt, i32.load, v128.const, i8x16.add, etc.
  * Uses backtracking: try memarg first, then numeric value, then bare opcode. */
 numericLikeInstr  ::= dottedName memarg
                     | dottedName float
+                    | dottedName integer
                     | dottedName
 
 floatConstInstr   ::= ( 'f32.const' | 'f64.const' ) floatValue
@@ -380,11 +388,11 @@ watKeyword        ::= 'module' | 'type' | 'rec' | 'sub' | 'final' | 'struct' | '
                     | 'memory' | 'table' | 'elem' | 'data' | 'import' | 'export'
                     | 'start' | 'tag' | 'mut' | 'ref' | 'null' | 'offset' | 'item'
                     | 'block' | 'loop' | 'if' | 'then' | 'else' | 'end'
-                    | 'try_table' | 'catch' | 'catch_ref' | 'catch_all' | 'catch_all_ref'
+                    | 'try' | 'try_table' | 'catch' | 'catch_ref' | 'catch_all' | 'catch_all_ref'
                     | 'call' | 'call_ref' | 'call_indirect' | 'return_call'
                     | 'return_call_ref' | 'return_call_indirect'
                     | 'br' | 'br_if' | 'br_table' | 'br_on_null' | 'br_on_non_null'
-                    | 'br_on_cast' | 'br_on_cast_fail' | 'return' | 'throw' | 'throw_ref'
+                    | 'br_on_cast' | 'br_on_cast_fail' | 'return' | 'throw' | 'throw_ref' | 'rethrow'
                     | 'nop' | 'unreachable' | 'drop' | 'select'
                     | 'local.get' | 'local.set' | 'local.tee'
                     | 'global.get' | 'global.set'

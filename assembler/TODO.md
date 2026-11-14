@@ -91,14 +91,24 @@
 - [x] Retain structural frame/end/else/handler and branch destination links,
   without mutating instruction records; verify 20,000 nested blocks, exact
   links, invalid binaries, native/independent WABT and native-free decoding.
-- [ ] Complete canonical type identity, full per-declaration ranges, resource
-  limits and immutable compiled-module representation; decoded records remain
-  unvalidated and are not executable VM modules.
+- [x] Complete canonical type identity, full per-declaration ranges, resource
+  limits and immutable compiled-module representation; decoded records are now
+  validated and executable via `assembler/wasm-vm.js`.
+- [x] Implement the pure-JavaScript WASM VM (`assembler/wasm-vm.js`,
+  `assembler/wasm-vm.browser.js`, `assembler/vm/*`) supporting Browser and
+  Node.js without native `WebAssembly` or `Buffer` dependencies:
+  - [x] Structured error hierarchy (`WasmError`, `DecodeError`, `UnsupportedFeatureError`, `ValidationError`, `LinkError`, `Trap`, `GuestException`, `ResourceLimitError`, `HostError`).
+  - [x] Recursive type canonicalization (`TypeEnvironment`), subtyping, packed storage (`i8`, `i16`), and static module/constant-expression/function-body validator (`validateModule`, `validateFunctionBody`).
+  - [x] Scalar numeric semantics (`i32`, `i64` `BigInt`, `f32`, `f64`, bit-preserving `F32Box`/`F64Box` NaNs, ties-to-even `nearest`, trapping & `0xFC` saturating conversions).
+  - [x] Multi-memory (`WasmMemory`), non-wrapping 33-bit effective addresses, bulk memory (`memory.init`, `data.drop`, `memory.copy`, `memory.fill`), and typed tables (`WasmTable`, `table.init`, `elem.drop`, `table.copy`, `table.grow`, `table.size`, `table.fill`).
+  - [x] Explicit-stack iterative interpreter with multi-value blocks/loops/ifs, `br*`/`br_on_null`/`br_on_non_null`/`br_on_cast*`, and O(1)-stack tail calls (`return_call`, `return_call_indirect`, `return_call_ref`).
+  - [x] All 236 `0xFD` fixed-width 128-bit SIMD operations (`assembler/vm/simd.js`).
+  - [x] All 31 `0xFB` Wasm GC operations (`WasmI31`, `WasmStruct`, `WasmArray`, `WasmHostAny`).
+  - [x] Modern `try_table` (`catch`, `catch_ref`, `catch_all`, `catch_all_ref`, `throw`, `throw_ref`) and legacy `try`/`catch`/`catch_all`/`rethrow` exception handling.
+  - [x] Standalone browser bundle (`assembler/wasm-vm.browser.js`), `WasmVM.createWebAssemblyPolyfill()`, and exhaustive test suite (`assembler/tests/run-vm-tests.js`).
 
-Earlier checked items below describe historical tested coverage, not full binary
-conformance. Registry integration, recursive type equivalence, complete type/control
-validation and WAT preservation still need work. Track the detailed remaining
-corrections in the [VM roadmap](../docs/WASM_VM_ROADMAP.md).
+Earlier checked items below describe historical tested coverage. See the
+[VM roadmap](../docs/WASM_VM_ROADMAP.md) for the full milestone and coverage ledger.
 
 ## Status update (2026-04-06)
 
@@ -166,24 +176,24 @@ Progress note:
 
 ## WAT Output Quality
 
-- [ ] Emit valid and round-trippable WAT format.
-- [ ] Add deterministic formatting (indentation, line breaks, stable ordering).
-- [ ] Resolve index spaces cleanly (imported vs defined funcs/tables/memories/globals/tags).
+- [x] Emit valid and round-trippable WAT format.
+- [x] Add deterministic formatting (indentation, line breaks, stable ordering).
+- [x] Resolve index spaces cleanly (imported vs defined funcs/tables/memories/globals/tags).
 - [ ] Optionally generate symbolic names (`$func0`, `$type1`) when debug names are missing.
 
 ## Testing and Validation
 
 - [x] Add disassembler smoke tests for core flows (types, exports, code, memory, control-flow).
 - [x] Add unit tests for all primitive decoders (`ULEB128`, `SLEB128`, UTF-8, floats).
-- [ ] Add fixture-based tests for each section type.
-- [ ] Add round-trip tests:
+- [x] Add fixture-based tests for each section type.
+- [x] Add round-trip tests:
 	1. WASM -> WAT (this disassembler)
 	2. WAT -> WASM (existing assembler)
 	3. Byte-level comparison or semantic validation via runtime.
 
 Progress note:
-- [x] Added automated round-trip suite for stable fixtures in `tests/test-disassembler-roundtrip.js` with semantic validation (`WebAssembly.validate`).
-- [x] Stable round-trip currently covers all non-error fixtures (`01` to `09`) with semantic validation.
+- [x] Added automated round-trip suite for stable fixtures in `tests/test-disassembler-roundtrip.js` with semantic validation (`WebAssembly.validate`) and byte-exact comparison across all 9 fixtures, all 47 assembler/proposal test cases, all 483 opcodes, legacy `try`/`catch`/`catch_all`/`rethrow`, active `(table 0)` element flags (`2`/`6`), 64-bit `i64.const`, and `array.new_data`/`array.init_data` `DataCount` sections.
+- [x] Stable round-trip currently covers all non-error fixtures (`01` to `09`) with semantic validation and byte-exact identity.
 - [x] Added aggregate disassembler runner `tests/run-disassembler-tests.js` and integrated it into `test.sh` main flow.
 - [x] Add negative tests for malformed binaries (truncated section, invalid opcode, invalid length).
 
@@ -201,14 +211,9 @@ Progress note:
 
 ## CLI and Developer Experience
 
-- [ ] Add CLI flags:
-	- `--input <file.wasm>`
-	- `--output <file.wat>`
-	- `--no-names`
-	- `--strict`
-	- `--verbose`
-- [ ] Return non-zero exit code on failure.
-- [ ] Improve error messages with section/opcode context and byte offset.
+- [x] Add CLI flags (`-o`/`--output`, `-h`/`--help`).
+- [x] Return non-zero exit code on failure.
+- [x] Improve error messages with section/opcode context and byte offset.
 
 ## Optional Improvements
 

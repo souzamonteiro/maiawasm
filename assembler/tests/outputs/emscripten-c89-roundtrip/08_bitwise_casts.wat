@@ -1,13 +1,8 @@
 (module
 
-  (type (func
-  ))
-  (type (func
-    (result i32)
-  ))
-  (type (func
-    (param i32)
-  ))
+  (type (func))
+  (type (func (result i32)))
+  (type (func (param i32)))
 
   (table 1 1 funcref)
 
@@ -46,7 +41,7 @@
     i32.const 0
     i32.store offset=16 align=4
     local.get 0
-    f32.const 4
+    f32.const 0x800000p-21
     f32.store offset=12 align=4
     local.get 0
     local.get 0

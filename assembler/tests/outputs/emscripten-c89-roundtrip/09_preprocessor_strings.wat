@@ -1,17 +1,9 @@
 (module
 
-  (type (func
-  ))
-  (type (func
-    (param i32)
-    (result i32)
-  ))
-  (type (func
-    (result i32)
-  ))
-  (type (func
-    (param i32)
-  ))
+  (type (func))
+  (type (func (param i32) (result i32)))
+  (type (func (result i32)))
+  (type (func (param i32)))
 
   (table 1 1 funcref)
 
@@ -178,5 +170,5 @@
     global.get 0
   )
 
-  (data (i32.const 65536) "\66\69\72\73\74\00\74\68\69\72\64\00\73\65\63\6f\6e\64\00\00\00\00\01\00\0c\00\01\00\06\00\01\00")
+  (data (i32.const 65536) "first\00third\00second\00\00\00\00\01\00\0c\00\01\00\06\00\01\00")
 )
