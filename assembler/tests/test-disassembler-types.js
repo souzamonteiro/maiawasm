@@ -190,11 +190,13 @@ try {
     asm.assemble('(module (func (local (ref null func))))'),
     asm.assemble('(module (type (func (param (ref null func)))))')]) {
     fs.writeFileSync(file, source);
-    assert.throws(() => new WasmLinker().linkStatic([file]), /Static mode does not support recursive/);
+    const linked = new WasmLinker().linkStatic([file]).wasm;
+    nativeValid(linked);
+    assert.deepStrictEqual(shape(parse(linked).dis), shape(parse(source).dis));
   }
 } finally {
   if (fs.existsSync(file)) fs.unlinkSync(file);
   fs.rmdirSync(tempDir);
 }
-console.log('PASS_static_linker_rejects_unsupported_type_graphs_without_flattening');
+console.log('PASS_static_linker_preserves_recursive_subtype_and_reference_type_graphs');
 console.log('\nAll recursive/reference type regressions passed.');

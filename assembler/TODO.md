@@ -34,7 +34,8 @@
   locals, block results and typed select without dropping their heap types.
 - [x] Retain legacy assembler type syntax while supporting standard recursive
   groups, standard mutable fields and forward named references.
-- [x] Reject type graphs/signatures/locals unsupported by static-link remapping.
+- [x] Support full recursive/subtyped/reference type graphs, signatures, locals,
+  globals, tables, memories, tags, and all 483 opcodes during static linking.
 - [x] Test recursive/reference round trips, native typed-reference execution and
   type decoding/encoding with native `WebAssembly` removed.
 - [x] Preserve full memory indices and scalar/SIMD multi-memory memargs, check
@@ -106,6 +107,10 @@
   - [x] All 31 `0xFB` Wasm GC operations (`WasmI31`, `WasmStruct`, `WasmArray`, `WasmHostAny`).
   - [x] Modern `try_table` (`catch`, `catch_ref`, `catch_all`, `catch_all_ref`, `throw`, `throw_ref`) and legacy `try`/`catch`/`catch_all`/`rethrow` exception handling.
   - [x] Standalone browser bundle (`assembler/wasm-vm.browser.js`), `WasmVM.createWebAssemblyPolyfill()`, and exhaustive test suite (`assembler/tests/run-vm-tests.js`).
+- [x] Complete the static and dynamic WASM linker (`assembler/wasm-linker.js`):
+  - [x] Full recursive/subtyped/GC/reference type graph deduplication and remapping (`rec`, `sub`, `sub final`, `struct`, `array`, `func`, packed `i8`/`i16`, explicit `(ref [null] ht)`).
+  - [x] Rewriting of all 483 opcodes (`198` base + `18` `0xFC` + `31` `0xFB` GC + `236` `0xFD` SIMD), including blocktypes, multi-table `call_indirect`/`return_call_indirect`, typed `select`, `try_table` and legacy `catch`/`throw` tags, and constant initializer expressions.
+  - [x] Cross-module resolution and multiple external imports for all 5 entity kinds (`func`, `table`, `memory`, `global`, `tag`), dependency-ordered global emission, synthesized multi-module `start` trampoline, module-name disambiguation, `--export-all`, `WasmVM`-backed `instantiateSync`/`instantiate`, and WebAssembly-free fallback in generated dynamic loaders.
 
 Earlier checked items below describe historical tested coverage. See the
 [VM roadmap](../docs/WASM_VM_ROADMAP.md) for the full milestone and coverage ledger.

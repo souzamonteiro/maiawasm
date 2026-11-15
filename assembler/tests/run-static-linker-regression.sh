@@ -117,4 +117,8 @@ run_case "multi: global resolution" \
   --static -w "$TMP_DIR/verify_global_linked2.wasm" -e global_app2
 assert_export_result "$TMP_DIR/verify_global_linked2.wasm" "global_app2" 7
 
+echo "[RUN] comprehensive static & dynamic linker suite"
+node "$REPO_ROOT/assembler/tests/test-linker-comprehensive.js"
+echo
+
 echo "Static linker regression finished."

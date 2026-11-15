@@ -8103,6 +8103,13 @@ class WasmVM {
   }
 }
 
+WasmVM.Module = WasmModule;
+WasmVM.Instance = WasmInstance;
+WasmVM.Memory = WasmMemory;
+WasmVM.Table = WasmTable;
+WasmVM.Global = WasmGlobal;
+WasmVM.Tag = WasmTag;
+
 const exportedApi = {
   WasmVM,
   WasmModule,
