@@ -1508,6 +1508,22 @@ class WasmLinker {
           .filter(c => c.moduleId !== consumer.id)
           .filter(c => compatibleTypes(importType, c.exportType));
 
+        // Resolve MaiaJS cross-module host imports shaped like __<moduleId>__<symbol>
+        if (candidates.length === 0) {
+          const modPrefixMatch = imp.name.match(/^__([A-Za-z0-9_]+)__(.+)$/);
+          if (modPrefixMatch) {
+            const [, targetMod, targetSym] = modPrefixMatch;
+            const targetKey = `${targetSym}::${importType.kind}`;
+            const allTargetCandidates = (exportIndex.get(targetKey) || [])
+              .filter(c => c.moduleId !== consumer.id)
+              .filter(c => compatibleTypes(importType, c.exportType));
+            const modMatched = allTargetCandidates.filter(
+              c => c.moduleId === targetMod || sanitizeIdentifier(c.moduleId) === targetMod
+            );
+            candidates = modMatched.length > 0 ? modMatched : allTargetCandidates;
+          }
+        }
+
         // Disambiguate by matching import module name when multiple modules export the same symbol
         if (candidates.length > 1) {
           const sanitizedImportMod = sanitizeIdentifier(imp.module);
