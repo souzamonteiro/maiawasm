@@ -1042,7 +1042,18 @@ function genDataCountSection(ctx) {
 
 function genCodeSection(ctx) {
   if (!ctx.funcDefs.length) return null;
-  const bodies = ctx.funcDefs.map((fd, i) => emitFuncBody(fd, ctx, i));
+  const bodies = ctx.funcDefs.map((fd, i) => {
+    if (ctx.rawFuncWats && ctx.rawFuncWats[i]) {
+      const fTree = new WATParser(`(module ${ctx.rawFuncWats[i]})`).parse();
+      const mod = tFindFirst(fTree, 'module');
+      const mfs = mod ? tChildrenOfType(mod, 'moduleField') : [];
+      const fNode = mfs[0] ? tChild(mfs[0], 'funcDef') : null;
+      if (!fNode) throw new Error(`Failed to parse streamed funcDef #${i}`);
+      ctx.rawFuncWats[i] = null;
+      return emitFuncBody(fNode, ctx, i);
+    }
+    return emitFuncBody(fd, ctx, i);
+  });
   const bufs = [encodeULEB128(bodies.length)];
   for (const body of bodies) { bufs.push(encodeULEB128(body.length)); bufs.push(body); }
   return encodeSection(0x0a, Buffer.concat(bufs));
@@ -1757,12 +1768,163 @@ function normalizeWatCode(source) {
 // MAIN ASSEMBLER
 // ============================================================================
 
+function splitModuleFunctionsForStreaming(wat) {
+  const skipWsAndComments = (s, pos) => {
+    while (pos < s.length) {
+      const ch = s[pos];
+      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') { pos++; continue; }
+      if (s.startsWith(';;', pos)) {
+        while (pos < s.length && s[pos] !== '\n' && s[pos] !== '\r') pos++;
+        continue;
+      }
+      if (s.startsWith('(;', pos)) {
+        let d = 1; pos += 2;
+        while (pos < s.length && d > 0) {
+          if (s.startsWith('(;', pos)) { d++; pos += 2; }
+          else if (s.startsWith(';)', pos)) { d--; pos += 2; }
+          else pos++;
+        }
+        continue;
+      }
+      break;
+    }
+    return pos;
+  };
+  const scanSExprEnd = (s, start) => {
+    let d = 0;
+    let i = start;
+    while (i < s.length) {
+      const ch = s[i];
+      if (ch === '"') {
+        i++;
+        while (i < s.length) {
+          if (s[i] === '\\') i += 2;
+          else if (s[i++] === '"') break;
+        }
+        continue;
+      }
+      if (s.startsWith(';;', i)) {
+        while (i < s.length && s[i] !== '\n' && s[i] !== '\r') i++;
+        continue;
+      }
+      if (s.startsWith('(;', i)) {
+        let cd = 1; i += 2;
+        while (i < s.length && cd > 0) {
+          if (s.startsWith('(;', i)) { cd++; i += 2; }
+          else if (s.startsWith(';)', i)) { cd--; i += 2; }
+          else i++;
+        }
+        continue;
+      }
+      if (ch === '(') d++;
+      else if (ch === ')') {
+        d--;
+        if (d === 0) return i + 1;
+      }
+      i++;
+    }
+    return s.length;
+  };
+  const extractFuncHeaderStub = (funcWat) => {
+    let p = skipWsAndComments(funcWat, 1);
+    while (p < funcWat.length && !/[\s()]/.test(funcWat[p])) p++; // skip "func"
+    p = skipWsAndComments(funcWat, p);
+    if (funcWat[p] === '$') {
+      while (p < funcWat.length && !/[\s()]/.test(funcWat[p])) p++;
+      p = skipWsAndComments(funcWat, p);
+    }
+    let headerEnd = p;
+    while (p < funcWat.length && funcWat[p] === '(') {
+      const kwStart = skipWsAndComments(funcWat, p + 1);
+      let kwEnd = kwStart;
+      while (kwEnd < funcWat.length && !/[\s()]/.test(funcWat[kwEnd])) kwEnd++;
+      const kw = funcWat.slice(kwStart, kwEnd);
+      if (kw === 'import') return null; // inline import has no body
+      if (kw === 'export' || kw === 'type' || kw === 'param' || kw === 'result') {
+        const exprEnd = scanSExprEnd(funcWat, p);
+        headerEnd = exprEnd;
+        p = skipWsAndComments(funcWat, exprEnd);
+        continue;
+      }
+      break;
+    }
+    return funcWat.slice(0, headerEnd) + ')';
+  };
+
+  const out = [];
+  const rawFuncWats = [];
+  let last = 0;
+  let i = skipWsAndComments(wat, 0);
+  if (wat[i] !== '(') return null;
+  let depth = 0;
+  while (i < wat.length) {
+    const ch = wat[i];
+    if (ch === '"') {
+      i++;
+      while (i < wat.length) {
+        if (wat[i] === '\\') i += 2;
+        else if (wat[i++] === '"') break;
+      }
+      continue;
+    }
+    if (wat.startsWith(';;', i)) {
+      while (i < wat.length && wat[i] !== '\n' && wat[i] !== '\r') i++;
+      continue;
+    }
+    if (wat.startsWith('(;', i)) {
+      let cd = 1; i += 2;
+      while (i < wat.length && cd > 0) {
+        if (wat.startsWith('(;', i)) { cd++; i += 2; }
+        else if (wat.startsWith(';)', i)) { cd--; i += 2; }
+        else i++;
+      }
+      continue;
+    }
+    if (ch === '(') {
+      if (depth === 1) {
+        const kwStart = skipWsAndComments(wat, i + 1);
+        if (wat.startsWith('func', kwStart) && /[\s($]/.test(wat[kwStart + 4] || '')) {
+          const funcEnd = scanSExprEnd(wat, i);
+          const funcWat = wat.slice(i, funcEnd);
+          const stub = extractFuncHeaderStub(funcWat);
+          if (stub) {
+            out.push(wat.slice(last, i));
+            out.push(stub);
+            rawFuncWats.push(funcWat);
+            last = funcEnd;
+            i = funcEnd;
+            continue;
+          }
+        }
+      }
+      depth++;
+    } else if (ch === ')') {
+      depth--;
+    }
+    i++;
+  }
+  out.push(wat.slice(last));
+  return { skeletonWat: out.join(''), rawFuncWats };
+}
+
 class WatAssembler {
   assemble(sourceWat) {
     const normalizedWat = normalizeWatCode(sourceWat);
-    const p = new WATParser(normalizedWat);
-    const tree = p.parse();
+    let tree;
+    let rawFuncWats = null;
+    if (normalizedWat.length > 500000) {
+      const split = splitModuleFunctionsForStreaming(normalizedWat);
+      if (split && split.rawFuncWats.length > 0) {
+        tree = new WATParser(split.skeletonWat).parse();
+        rawFuncWats = split.rawFuncWats;
+      } else {
+        tree = new WATParser(normalizedWat).parse();
+      }
+    } else {
+      tree = new WATParser(normalizedWat).parse();
+    }
     const ctx = new ModuleContext(tree);
+    ctx.rawFuncWats = rawFuncWats;
     buildSymbolTables(ctx);
     resolveExportsAndStart(ctx);
     const codeSection = genCodeSection(ctx);
