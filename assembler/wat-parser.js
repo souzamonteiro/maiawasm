@@ -209,14 +209,13 @@ class Lexer {
   }
 }
 
-const __BACKTRACK_ERROR = new Error('Backtrack');
-
 class Parser {
   constructor(input, eventHandler = null) {
     this.lexer = new Lexer(input);
     this.tokens = this.lexer.tokenize();
     this.position = 0;
     this.errors = [];
+    this._lastError = null;
     this.eventHandler = eventHandler;
     this.failureMemo = new Set();
     this.successMemo = new Map();
@@ -230,21 +229,23 @@ class Parser {
   consume(expectedType) {
     const token = this.peek();
     if (!token || token.type !== expectedType) {
+      const errObj = {
+        expected: expectedType,
+        found: token ? token.type : 'EOF',
+        position: this.position
+      };
+      this._lastError = errObj;
       if (this.errors.length === 0 || this.position >= this.errors[this.errors.length - 1].position) {
         this.errors.length = 0;
-        this.errors.push({
-          expected: expectedType,
-          found: token ? token.type : 'EOF',
-          position: this.position
-        });
+        this.errors.push(errObj);
       }
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this.eventHandler && typeof this.eventHandler.terminal === 'function') {
       this.eventHandler.terminal(expectedType, token.value, this.position);
     }
     this.position++;
-    return token;
+    return true;
   }
   
   match(expectedType) {
@@ -268,22 +269,24 @@ class Parser {
     const pattern = this.lexer.tokenPatterns.find((candidate) => candidate.type === expectedType);
     const match = pattern && token ? token.value.match(pattern.regex) : null;
     if (!match || match.index !== 0 || match[0].length !== token.value.length) {
+      const errObj = {
+        expected: expectedType,
+        found: token ? token.type : 'EOF',
+        position: this.position
+      };
+      this._lastError = errObj;
       if (this.errors.length === 0 || this.position >= this.errors[this.errors.length - 1].position) {
         this.errors.length = 0;
-        this.errors.push({
-          expected: expectedType,
-          found: token ? token.type : 'EOF',
-          position: this.position
-        });
+        this.errors.push(errObj);
       }
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
     if (this.eventHandler && typeof this.eventHandler.terminal === 'function') {
       this.eventHandler.terminal(token.type, token.value, this.position);
     }
     this.position++;
-    return token;
+    return true;
   }
 
   markEventState() {
@@ -305,37 +308,24 @@ class Parser {
     return `Syntax error: expected ${err.expected}, got ${err.found}`;
   }
   parse() {
-    const prevStackTraceLimit = Error.stackTraceLimit;
-    Error.stackTraceLimit = 0;
-    let result;
-    let parseErr = null;
-    try {
-      result = this.parsewat();
-    } catch (e) {
-      parseErr = e;
-    } finally {
-      Error.stackTraceLimit = prevStackTraceLimit;
-    }
-    if (parseErr !== null) {
-      if (parseErr === __BACKTRACK_ERROR) {
-        throw new Error(this.getErrorMessage());
-      }
-      throw parseErr;
+    if (!this.parsewat()) {
+      const err = this._lastError || this.errors[this.errors.length - 1];
+      throw new Error(err ? `Expected '${err.expected}', got '${err.found}'` : this.getErrorMessage());
     }
     const next = this.peek();
     if (!next && this.position === this.tokens.length) {
-      return result;
+      return undefined;
     }
     if (!next || next.type !== 'EOF') {
       throw new Error(`Unexpected token at end: ${next ? next.type : 'EOF(consumed)'}`);
     }
-    return result;
+    return undefined;
   }
   parsewat() {
     const __memoStart = this.position;
     const __memoKey = 'wat@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -344,48 +334,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('wat', this.position);
     }
-    let __ok = false;
-    try {
-    this.parsewatBody();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsewatBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('wat', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('wat', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('wat', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('wat', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsewatBody() {
+    if (!this.parsewatBody()) { return false; }
+
+    return true;
   }
   parsewatBody() {
     const __memoStart = this.position;
     const __memoKey = 'watBody@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -394,72 +385,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('watBody', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsewatBodyBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('watBody', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('watBody', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsewatBodyBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsemodule();
+      let _ok_1 = true;
+    if (!this.parsemodule()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('eof');
+      let _ok_2 = true;
+    if (!this.consume('eof')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('watBody', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('watBody', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsemodule() {
     const __memoStart = this.position;
     const __memoKey = 'module@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -468,23 +462,47 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('module', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_module');
+    const __ok = this._parsemoduleBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('module', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('module', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsemoduleBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_module')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -492,49 +510,22 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsemoduleField();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsemoduleField()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('module', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('module', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsemoduleField() {
     const __memoStart = this.position;
     const __memoKey = 'moduleField@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -543,172 +534,185 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('moduleField', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsemoduleFieldBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('moduleField', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('moduleField', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsemoduleFieldBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetypeDef();
+      let _ok_1 = true;
+    if (!this.parsetypeDef()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parserecDef();
+      let _ok_2 = true;
+    if (!this.parserecDef()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseimportDef();
+      let _ok_3 = true;
+    if (!this.parseimportDef()) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetagDef();
+      let _ok_4 = true;
+    if (!this.parsetagDef()) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseglobalDef();
+      let _ok_5 = true;
+    if (!this.parseglobalDef()) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememDef();
+      let _ok_6 = true;
+    if (!this.parsememDef()) { _ok_6 = false; }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetableDef();
+      let _ok_7 = true;
+    if (!this.parsetableDef()) { _ok_7 = false; }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsefuncDef();
+      let _ok_8 = true;
+    if (!this.parsefuncDef()) { _ok_8 = false; }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsedataDef();
+      let _ok_9 = true;
+    if (!this.parsedataDef()) { _ok_9 = false; }
+      if (_ok_9) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseelemDef();
+      let _ok_10 = true;
+    if (!this.parseelemDef()) { _ok_10 = false; }
+      if (_ok_10) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsestartDef();
+      let _ok_11 = true;
+    if (!this.parsestartDef()) { _ok_11 = false; }
+      if (_ok_11) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseexportDef();
+      let _ok_12 = true;
+    if (!this.parseexportDef()) { _ok_12 = false; }
+      if (_ok_12) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('moduleField', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('moduleField', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetypeDef() {
     const __memoStart = this.position;
     const __memoKey = 'typeDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -717,62 +721,61 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('typeDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_type');
+    const __ok = this._parsetypeDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('typeDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('typeDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetypeDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_type')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parserectype();
-    this.consume('TOKEN__29_');
+    if (!this.parserectype()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('typeDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('typeDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parserecDef() {
     const __memoStart = this.position;
     const __memoKey = 'recDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -781,62 +784,61 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('recDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_rec');
+    const __ok = this._parserecDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('recDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('recDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parserecDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_rec')) { return false; }
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsetypeDef();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsetypeDef()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('recDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('recDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parserectype() {
     const __memoStart = this.position;
     const __memoKey = 'rectype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -845,91 +847,100 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('rectype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parserectypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('rectype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('rectype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parserectypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_rec');
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parsesubtype();
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_rec')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parsesubtype()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        _ok_1 = false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsesubtype();
+      let _ok_2 = true;
+    if (!this.parsesubtype()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('rectype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('rectype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsesubtype() {
     const __memoStart = this.position;
     const __memoKey = 'subtype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -938,98 +949,107 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('subtype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesubtypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('subtype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('subtype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesubtypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_sub');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_sub')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing final
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsefinal();
-      } catch(e) {
+      if (!this.parsefinal()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsesupertype();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsesupertype()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parsecomptype();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parsecomptype()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsecomptype();
+      let _ok_2 = true;
+    if (!this.parsecomptype()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('subtype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('subtype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefinal() {
     const __memoStart = this.position;
     const __memoKey = 'final@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1038,48 +1058,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('final', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN_final');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsefinalBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('final', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('final', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('final', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('final', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefinalBody() {
+    if (!this.consume('TOKEN_final')) { return false; }
+
+    return true;
   }
   parsesupertype() {
     const __memoStart = this.position;
     const __memoKey = 'supertype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1088,72 +1109,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('supertype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesupertypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('supertype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('supertype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesupertypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetypeidx();
+      let _ok_1 = true;
+    if (!this.parsetypeidx()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetypeuse();
+      let _ok_2 = true;
+    if (!this.parsetypeuse()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('supertype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('supertype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsecomptype() {
     const __memoStart = this.position;
     const __memoKey = 'comptype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1162,82 +1186,86 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('comptype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsecomptypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('comptype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('comptype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsecomptypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsefuncType();
+      let _ok_1 = true;
+    if (!this.parsefuncType()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsestructType();
+      let _ok_2 = true;
+    if (!this.parsestructType()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsearrayType();
+      let _ok_3 = true;
+    if (!this.parsearrayType()) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('comptype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('comptype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefuncType() {
     const __memoStart = this.position;
     const __memoKey = 'funcType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1246,74 +1274,71 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('funcType', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_func');
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseparamDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+    const __ok = this._parsefuncTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('funcType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('funcType', this.position);
       }
     }
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseresultDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
       }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
     }
-    this.consume('TOKEN__29_');
+    return __ok;
+  }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+  _parsefuncTypeBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_func')) { return false; }
+    while (true) {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      if (!this.parseparamDecl()) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+        break;
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('funcType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('funcType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
+      if (this.position === savePos) break;
     }
+    while (true) {
+      const savePos = this.position;
+      const saveMark = this.markEventState();
+      if (!this.parseresultDecl()) {
+        this.position = savePos;
+        this.restoreEventState(saveMark);
+        break;
+      }
+      if (this.position === savePos) break;
+    }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parsestructType() {
     const __memoStart = this.position;
     const __memoKey = 'structType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1322,62 +1347,61 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('structType', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_struct');
+    const __ok = this._parsestructTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('structType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('structType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsestructTypeBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_struct')) { return false; }
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsefieldDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsefieldDecl()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('structType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('structType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsearrayType() {
     const __memoStart = this.position;
     const __memoKey = 'arrayType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1386,26 +1410,53 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('arrayType', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_array');
+    const __ok = this._parsearrayTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('arrayType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('arrayType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsearrayTypeBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_array')) { return false; }
     // Group
     {
       let _matchedAlt = false;
       if (!_matchedAlt) {
         const _altStart = this.position;
         const _altMark = this.markEventState();
-        try {
-    this.parsefieldDecl();
+        let _ok_1 = true;
+    if (!this.parsefieldDecl()) { _ok_1 = false; }
+        if (_ok_1) {
           _matchedAlt = true;
-        } catch (e) {
+        } else {
           this.position = _altStart;
           this.restoreEventState(_altMark);
         }
@@ -1413,50 +1464,26 @@ class Parser {
       if (!_matchedAlt) {
         const _altStart = this.position;
         const _altMark = this.markEventState();
-        try {
-    this.parsefieldType();
+        let _ok_2 = true;
+    if (!this.parsefieldType()) { _ok_2 = false; }
+        if (_ok_2) {
           _matchedAlt = true;
-        } catch (e) {
+        } else {
           this.position = _altStart;
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
+      if (!_matchedAlt) { return false; }
     }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('arrayType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('arrayType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefieldDecl() {
     const __memoStart = this.position;
     const __memoKey = 'fieldDecl@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1465,62 +1492,61 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('fieldDecl', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_field');
+    const __ok = this._parsefieldDeclBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('fieldDecl', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('fieldDecl', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefieldDeclBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_field')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsefieldType();
-    this.consume('TOKEN__29_');
+    if (!this.parsefieldType()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('fieldDecl', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('fieldDecl', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefieldType() {
     const __memoStart = this.position;
     const __memoKey = 'fieldType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1529,86 +1555,95 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('fieldType', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsefieldTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('fieldType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('fieldType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefieldTypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_mut');
-    this.parsestoragetype();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_mut')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsestoragetype()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsestoragetype();
+      let _ok_2 = true;
+    if (!this.parsestoragetype()) { _ok_2 = false; }
+      if (_ok_2) {
     // Optional: try parsing mutField
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsemutField();
-      } catch(e) {
+      if (!this.parsemutField()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('fieldType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('fieldType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsemutField() {
     const __memoStart = this.position;
     const __memoKey = 'mutField@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1617,50 +1652,51 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('mutField', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_mut');
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsemutFieldBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('mutField', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('mutField', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('mutField', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('mutField', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsemutFieldBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_mut')) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parsestoragetype() {
     const __memoStart = this.position;
     const __memoKey = 'storagetype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1669,72 +1705,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('storagetype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsestoragetypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('storagetype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('storagetype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsestoragetypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsevalueType();
+      let _ok_1 = true;
+    if (!this.parsevalueType()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsepackType();
+      let _ok_2 = true;
+    if (!this.parsepackType()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('storagetype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('storagetype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsepackType() {
     const __memoStart = this.position;
     const __memoKey = 'packType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1743,72 +1782,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('packType', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsepackTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('packType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('packType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsepackTypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i8');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i8')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i16');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i16')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('packType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('packType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetagDef() {
     const __memoStart = this.position;
     const __memoKey = 'tagDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1817,23 +1859,47 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tagDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_tag');
+    const __ok = this._parsetagDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tagDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tagDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetagDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_tag')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -1841,50 +1907,23 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parsetagType();
-    this.consume('TOKEN__29_');
+    if (!this.parsetagType()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tagDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tagDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetagType() {
     const __memoStart = this.position;
     const __memoKey = 'tagType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1893,48 +1932,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tagType', this.position);
     }
-    let __ok = false;
-    try {
-    this.parsetypeuse();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetagTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tagType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tagType', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tagType', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tagType', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetagTypeBody() {
+    if (!this.parsetypeuse()) { return false; }
+
+    return true;
   }
   parseglobalDef() {
     const __memoStart = this.position;
     const __memoKey = 'globalDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -1943,23 +1983,47 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('globalDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_global');
+    const __ok = this._parseglobalDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('globalDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('globalDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseglobalDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_global')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -1967,51 +2031,24 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parseglobalType();
-    this.parseexpr();
-    this.consume('TOKEN__29_');
+    if (!this.parseglobalType()) { return false; }
+    if (!this.parseexpr()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('globalDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('globalDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseglobalType() {
     const __memoStart = this.position;
     const __memoKey = 'globalType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2020,75 +2057,84 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('globalType', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseglobalTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('globalType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('globalType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseglobalTypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsevalueType();
+      let _ok_1 = true;
+    if (!this.parsevalueType()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_mut');
-    this.parsevalueType();
-    this.consume('TOKEN__29_');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_mut')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsevalueType()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('globalType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('globalType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememDef() {
     const __memoStart = this.position;
     const __memoKey = 'memDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2097,23 +2143,47 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_memory');
+    const __ok = this._parsememDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_memory')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -2121,50 +2191,23 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parselimits();
-    this.consume('TOKEN__29_');
+    if (!this.parselimits()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetableDef() {
     const __memoStart = this.position;
     const __memoKey = 'tableDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2173,127 +2216,148 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tableDef', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsetableDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tableDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tableDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetableDefBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_table');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_table')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parselimits();
-    this.parsereftype();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parselimits()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsereftype()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_table');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_table')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parselimits();
-    this.parsereftype();
-    this.parsetableExpr();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.parselimits()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsereftype()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsetableExpr()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tableDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tableDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetableExpr() {
     const __memoStart = this.position;
     const __memoKey = 'tableExpr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2302,48 +2366,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tableExpr', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseexpr();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetableExprBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tableExpr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tableExpr', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tableExpr', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tableExpr', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetableExprBody() {
+    if (!this.parseexpr()) { return false; }
+
+    return true;
   }
   parsefuncDef() {
     const __memoStart = this.position;
     const __memoKey = 'funcDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2352,23 +2417,47 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('funcDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_func');
+    const __ok = this._parsefuncDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('funcDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('funcDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefuncDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_func')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -2376,22 +2465,18 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinlineExport();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinlineExport()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
     // Optional: try parsing typeuse
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsetypeuse();
-      } catch(e) {
+      if (!this.parsetypeuse()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
@@ -2399,50 +2484,23 @@ class Parser {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselocalDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parselocalDecl()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.parseexpr();
-    this.consume('TOKEN__29_');
+    if (!this.parseexpr()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('funcDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('funcDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parselocalDecl() {
     const __memoStart = this.position;
     const __memoKey = 'localDecl@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2451,105 +2509,120 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('localDecl', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parselocalDeclBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('localDecl', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('localDecl', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselocalDeclBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_local');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_local')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsevalueType();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parsevalueType()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_local');
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parsevalueType();
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_local')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parsevalueType()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        _ok_2 = false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('localDecl', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('localDecl', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseinlineExport() {
     const __memoStart = this.position;
     const __memoKey = 'inlineExport@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2558,51 +2631,52 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('inlineExport', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_export');
-    this.consume('string');
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseinlineExportBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('inlineExport', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('inlineExport', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('inlineExport', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('inlineExport', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseinlineExportBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_export')) { return false; }
+    if (!this.consume('string')) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parseimportDef() {
     const __memoStart = this.position;
     const __memoKey = 'importDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2611,53 +2685,54 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_import');
-    this.consume('string');
-    this.consume('string');
-    this.parseimportDesc();
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseimportDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('importDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('importDef', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('importDef', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('importDef', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseimportDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_import')) { return false; }
+    if (!this.consume('string')) { return false; }
+    if (!this.consume('string')) { return false; }
+    if (!this.parseimportDesc()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parseimportDesc() {
     const __memoStart = this.position;
     const __memoKey = 'importDesc@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2666,183 +2741,219 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('importDesc', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseimportDescBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('importDesc', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('importDesc', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseimportDescBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_func');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_func')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     // Optional: try parsing typeuse
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsetypeuse();
-      } catch(e) {
+      if (!this.parsetypeuse()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_table');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_table')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parselimits();
-    this.parsereftype();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.parselimits()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsereftype()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_memory');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_memory')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parselimits();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_3) {
+    if (!this.parselimits()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_global');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_global')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parseglobalType();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_4) {
+    if (!this.parseglobalType()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN__29_')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_tag');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_5 = false; }
+      if (_ok_5) {
+    if (!this.consume('TOKEN_tag')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsetagType();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_5) {
+    if (!this.parsetagType()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.consume('TOKEN__29_')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('importDesc', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('importDesc', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseexportDef() {
     const __memoStart = this.position;
     const __memoKey = 'exportDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2851,52 +2962,53 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_export');
-    this.consume('string');
-    this.parseexportDesc();
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseexportDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('exportDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('exportDef', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('exportDef', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('exportDef', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseexportDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_export')) { return false; }
+    if (!this.consume('string')) { return false; }
+    if (!this.parseexportDesc()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parseexportDesc() {
     const __memoStart = this.position;
     const __memoKey = 'exportDesc@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -2905,117 +3017,153 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('exportDesc', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseexportDescBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('exportDesc', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('exportDesc', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseexportDescBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_func');
-    this.parseindex();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_func')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parseindex()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_table');
-    this.parseindex();
-    this.consume('TOKEN__29_');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_table')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parseindex()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_memory');
-    this.parseindex();
-    this.consume('TOKEN__29_');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_memory')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parseindex()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_global');
-    this.parseindex();
-    this.consume('TOKEN__29_');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_global')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.parseindex()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN__29_')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_tag');
-    this.parseindex();
-    this.consume('TOKEN__29_');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_5 = false; }
+      if (_ok_5) {
+    if (!this.consume('TOKEN_tag')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.parseindex()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.consume('TOKEN__29_')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('exportDesc', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('exportDesc', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsestartDef() {
     const __memoStart = this.position;
     const __memoKey = 'startDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3024,51 +3172,52 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('startDef', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_start');
-    this.parseindex();
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsestartDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('startDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('startDef', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('startDef', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('startDef', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsestartDefBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_start')) { return false; }
+    if (!this.parseindex()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parsedataDef() {
     const __memoStart = this.position;
     const __memoKey = 'dataDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3077,127 +3226,155 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('dataDef', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsedataDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('dataDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('dataDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsedataDefBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_data');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_data')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsedatastring();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parsedatastring()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_data');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_data')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsememUse();
-    this.parseoffset();
-    this.parsedatastring();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.parsememUse()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parseoffset()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsedatastring()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_data');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_data')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parseoffset();
-    this.parsedatastring();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_3) {
+    if (!this.parseoffset()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parsedatastring()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('dataDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('dataDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsedatastring() {
     const __memoStart = this.position;
     const __memoKey = 'datastring@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3206,49 +3383,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('datastring', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('string');
-    while (this.match('string')) { /* one or more */ }
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsedatastringBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('datastring', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('datastring', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('datastring', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('datastring', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsedatastringBody() {
+    if (!this.consume('string')) { return false; } else { while (this.match('string')) { /* one or more */ } }
+
+    return true;
   }
   parseelemDef() {
     const __memoStart = this.position;
     const __memoKey = 'elemDef@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3257,152 +3434,189 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elemDef', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseelemDefBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('elemDef', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('elemDef', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseelemDefBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_elem');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_elem')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parseelemList();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parseelemList()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_elem');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_elem')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsetableUse();
-    this.parseoffset();
-    this.parseelemList();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.parsetableUse()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parseoffset()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parseelemList()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_elem');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_elem')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parseoffset();
-    this.parseelemList();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_3) {
+    if (!this.parseoffset()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parseelemList()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_elem');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_elem')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.consume('TOKEN_declare');
-    this.parseelemList();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_declare')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.parseelemList()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN__29_')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('elemDef', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('elemDef', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseelemList() {
     const __memoStart = this.position;
     const __memoKey = 'elemList@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3411,96 +3625,99 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elemList', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseelemListBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('elemList', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('elemList', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseelemListBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsereftype();
+      let _ok_1 = true;
+    if (!this.parsereftype()) { _ok_1 = false; }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseelemExpr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseelemExpr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_func');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_func')) { _ok_2 = false; }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsefuncidx();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsefuncidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('elemList', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('elemList', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseelemExpr() {
     const __memoStart = this.position;
     const __memoKey = 'elemExpr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3509,75 +3726,84 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elemExpr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseelemExprBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('elemExpr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('elemExpr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseelemExprBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_item');
-    this.parseexpr();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_item')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parseexpr()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseinstr();
+      let _ok_2 = true;
+    if (!this.parseinstr()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('elemExpr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('elemExpr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememUse() {
     const __memoStart = this.position;
     const __memoKey = 'memUse@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3586,51 +3812,52 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memUse', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_memory');
-    this.parsememidx();
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsememUseBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memUse', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memUse', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memUse', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memUse', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememUseBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_memory')) { return false; }
+    if (!this.parsememidx()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parsetableUse() {
     const __memoStart = this.position;
     const __memoKey = 'tableUse@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3639,51 +3866,52 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tableUse', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_table');
-    this.parsetableidx();
-    this.consume('TOKEN__29_');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetableUseBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tableUse', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tableUse', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tableUse', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tableUse', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetableUseBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_table')) { return false; }
+    if (!this.parsetableidx()) { return false; }
+    if (!this.consume('TOKEN__29_')) { return false; }
+
+    return true;
   }
   parseoffset() {
     const __memoStart = this.position;
     const __memoKey = 'offset@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3692,75 +3920,84 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('offset', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseoffsetBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('offset', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('offset', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseoffsetBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_offset');
-    this.parseexpr();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_offset')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parseexpr()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseexpr();
+      let _ok_2 = true;
+    if (!this.parseexpr()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('offset', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('offset', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseinstr() {
     const __memoStart = this.position;
     const __memoKey = 'instr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3769,72 +4006,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('instr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseinstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('instr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('instr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseinstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsefoldedInstr();
+      let _ok_1 = true;
+    if (!this.parsefoldedInstr()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseseqInstr();
+      let _ok_2 = true;
+    if (!this.parseseqInstr()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('instr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('instr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefoldedInstr() {
     const __memoStart = this.position;
     const __memoKey = 'foldedInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -3843,380 +4083,423 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('foldedInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsefoldedInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('foldedInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('foldedInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefoldedInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_block');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_block')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_loop');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_loop')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_if');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_if')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_3) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_3) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_3) {
     // Group ?
     {
       const _optStart = this.position;
       const _optMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_then');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_then')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN__29_')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
     // Group ?
     {
       const _optStart = this.position;
       const _optMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_else');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_5 = false; }
+      if (_ok_5) {
+    if (!this.consume('TOKEN_else')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
-      } catch (e) {
+      }
+      if (_ok_5) {
+    if (!this.consume('TOKEN__29_')) { _ok_5 = false; }
+      }
+      if (!_ok_5) {
         this.position = _optStart;
         this.restoreEventState(_optMark);
       }
     }
-      } catch (e) {
+      }
+      if (!_ok_4) {
         this.position = _optStart;
         this.restoreEventState(_optMark);
       }
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_try');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_6 = false; }
+      if (_ok_6) {
+    if (!this.consume('TOKEN_try')) { _ok_6 = false; }
+      }
+      if (_ok_6) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_6) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselegacyCatchClause();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parselegacyCatchClause()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_6) {
+    if (!this.consume('TOKEN__29_')) { _ok_6 = false; }
+      }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_try_5F_table');
+      let _ok_7 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_7 = false; }
+      if (_ok_7) {
+    if (!this.consume('TOKEN_try_5F_table')) { _ok_7 = false; }
+      }
+      if (_ok_7) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_7) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_7) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsecatchClause();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsecatchClause()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_7) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_7) {
+    if (!this.consume('TOKEN__29_')) { _ok_7 = false; }
+      }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.parsenonBlockInstr();
+      let _ok_8 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_8 = false; }
+      if (_ok_8) {
+    if (!this.parsenonBlockInstr()) { _ok_8 = false; }
+      }
+      if (_ok_8) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_8) {
+    if (!this.consume('TOKEN__29_')) { _ok_8 = false; }
+      }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('foldedInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('foldedInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsecatchClause() {
     const __memoStart = this.position;
     const __memoKey = 'catchClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -4225,106 +4508,139 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('catchClause', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsecatchClauseBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('catchClause', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('catchClause', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsecatchClauseBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_catch');
-    this.parsetagidx();
-    this.parselabelidx();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_catch')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsetagidx()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parselabelidx()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_catch_5F_ref');
-    this.parsetagidx();
-    this.parselabelidx();
-    this.consume('TOKEN__29_');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_catch_5F_ref')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsetagidx()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parselabelidx()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN__29_')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_catch_5F_all');
-    this.parselabelidx();
-    this.consume('TOKEN__29_');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_catch_5F_all')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselabelidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN__29_')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_catch_5F_all_5F_ref');
-    this.parselabelidx();
-    this.consume('TOKEN__29_');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_catch_5F_all_5F_ref')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.parselabelidx()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN__29_')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('catchClause', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('catchClause', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parselegacyCatchClause() {
     const __memoStart = this.position;
     const __memoKey = 'legacyCatchClause@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -4333,97 +4649,102 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('legacyCatchClause', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parselegacyCatchClauseBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('legacyCatchClause', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('legacyCatchClause', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselegacyCatchClauseBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_catch');
-    this.parsetagidx();
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_catch')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.parsetagidx()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_catch_5F_all');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_catch_5F_all')) { _ok_2 = false; }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('legacyCatchClause', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('legacyCatchClause', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseseqInstr() {
     const __memoStart = this.position;
     const __memoKey = 'seqInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -4432,400 +4753,419 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('seqInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseseqInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('seqInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('seqInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseseqInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsenonBlockInstr();
+      let _ok_1 = true;
+    if (!this.parsenonBlockInstr()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_block');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_block')) { _ok_2 = false; }
+      if (_ok_2) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN_end');
+      }
+      if (_ok_2) {
+    if (!this.consume('TOKEN_end')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_loop');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_loop')) { _ok_3 = false; }
+      if (_ok_3) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_3) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_3) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN_end');
+      }
+      if (_ok_3) {
+    if (!this.consume('TOKEN_end')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_if');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_if')) { _ok_4 = false; }
+      if (_ok_4) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_4) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_4) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_4) {
     // Group ?
     {
       const _optStart = this.position;
       const _optMark = this.markEventState();
-      try {
-    this.consume('TOKEN_else');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_else')) { _ok_5 = false; }
+      if (_ok_5) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_5) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-      } catch (e) {
+      }
+      if (!_ok_5) {
         this.position = _optStart;
         this.restoreEventState(_optMark);
       }
     }
-    this.consume('TOKEN_end');
+      }
+      if (_ok_4) {
+    if (!this.consume('TOKEN_end')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_try');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_try')) { _ok_6 = false; }
+      if (_ok_6) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_6) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselegacyCatchClause();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parselegacyCatchClause()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN_end');
+      }
+      if (_ok_6) {
+    if (!this.consume('TOKEN_end')) { _ok_6 = false; }
+      }
+      if (_ok_6) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_try_5F_table');
+      let _ok_7 = true;
+    if (!this.consume('TOKEN_try_5F_table')) { _ok_7 = false; }
+      if (_ok_7) {
     // Optional: try parsing label
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parselabel();
-      } catch(e) {
+      if (!this.parselabel()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_7) {
     // Optional: try parsing blockType
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseblockType();
-      } catch(e) {
+      if (!this.parseblockType()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_7) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsecatchClause();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parsecatchClause()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_7) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
-    this.consume('TOKEN_end');
+      }
+      if (_ok_7) {
+    if (!this.consume('TOKEN_end')) { _ok_7 = false; }
+      }
+      if (_ok_7) {
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('seqInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('seqInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsenonBlockInstr() {
     const __memoStart = this.position;
     const __memoKey = 'nonBlockInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -4834,1007 +5174,1228 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('nonBlockInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsenonBlockInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('nonBlockInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('nonBlockInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsenonBlockInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_nop');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_nop')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_unreachable');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_unreachable')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_drop');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_drop')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_return');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_return')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_throw_5F_ref');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_throw_5F_ref')) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_select');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_select')) { _ok_6 = false; }
+      if (_ok_6) {
     // Optional: try parsing resultTypes
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseresultTypes();
-      } catch(e) {
+      if (!this.parseresultTypes()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsefloatConstInstr();
+      let _ok_7 = true;
+    if (!this.parsefloatConstInstr()) { _ok_7 = false; }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememoryAccessInstr();
+      let _ok_8 = true;
+    if (!this.parsememoryAccessInstr()) { _ok_8 = false; }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsesimdLikeInstr();
+      let _ok_9 = true;
+    if (!this.parsesimdLikeInstr()) { _ok_9 = false; }
+      if (_ok_9) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsenumericLikeInstr();
+      let _ok_10 = true;
+    if (!this.parsenumericLikeInstr()) { _ok_10 = false; }
+      if (_ok_10) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememLikeInstr();
+      let _ok_11 = true;
+    if (!this.parsememLikeInstr()) { _ok_11 = false; }
+      if (_ok_11) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_local_2E_get');
-    this.parseindex();
+      let _ok_12 = true;
+    if (!this.consume('TOKEN_local_2E_get')) { _ok_12 = false; }
+      if (_ok_12) {
+    if (!this.parseindex()) { _ok_12 = false; }
+      }
+      if (_ok_12) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_local_2E_set');
-    this.parseindex();
+      let _ok_13 = true;
+    if (!this.consume('TOKEN_local_2E_set')) { _ok_13 = false; }
+      if (_ok_13) {
+    if (!this.parseindex()) { _ok_13 = false; }
+      }
+      if (_ok_13) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_local_2E_tee');
-    this.parseindex();
+      let _ok_14 = true;
+    if (!this.consume('TOKEN_local_2E_tee')) { _ok_14 = false; }
+      if (_ok_14) {
+    if (!this.parseindex()) { _ok_14 = false; }
+      }
+      if (_ok_14) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_global_2E_get');
-    this.parseindex();
+      let _ok_15 = true;
+    if (!this.consume('TOKEN_global_2E_get')) { _ok_15 = false; }
+      if (_ok_15) {
+    if (!this.parseindex()) { _ok_15 = false; }
+      }
+      if (_ok_15) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_global_2E_set');
-    this.parseindex();
+      let _ok_16 = true;
+    if (!this.consume('TOKEN_global_2E_set')) { _ok_16 = false; }
+      if (_ok_16) {
+    if (!this.parseindex()) { _ok_16 = false; }
+      }
+      if (_ok_16) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_get');
-    this.parsetableidx();
+      let _ok_17 = true;
+    if (!this.consume('TOKEN_table_2E_get')) { _ok_17 = false; }
+      if (_ok_17) {
+    if (!this.parsetableidx()) { _ok_17 = false; }
+      }
+      if (_ok_17) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_set');
-    this.parsetableidx();
+      let _ok_18 = true;
+    if (!this.consume('TOKEN_table_2E_set')) { _ok_18 = false; }
+      if (_ok_18) {
+    if (!this.parsetableidx()) { _ok_18 = false; }
+      }
+      if (_ok_18) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_size');
-    this.parsetableidx();
+      let _ok_19 = true;
+    if (!this.consume('TOKEN_table_2E_size')) { _ok_19 = false; }
+      if (_ok_19) {
+    if (!this.parsetableidx()) { _ok_19 = false; }
+      }
+      if (_ok_19) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_grow');
-    this.parsetableidx();
+      let _ok_20 = true;
+    if (!this.consume('TOKEN_table_2E_grow')) { _ok_20 = false; }
+      if (_ok_20) {
+    if (!this.parsetableidx()) { _ok_20 = false; }
+      }
+      if (_ok_20) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_fill');
-    this.parsetableidx();
+      let _ok_21 = true;
+    if (!this.consume('TOKEN_table_2E_fill')) { _ok_21 = false; }
+      if (_ok_21) {
+    if (!this.parsetableidx()) { _ok_21 = false; }
+      }
+      if (_ok_21) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_copy');
-    this.parsetableidx();
-    this.parsetableidx();
+      let _ok_22 = true;
+    if (!this.consume('TOKEN_table_2E_copy')) { _ok_22 = false; }
+      if (_ok_22) {
+    if (!this.parsetableidx()) { _ok_22 = false; }
+      }
+      if (_ok_22) {
+    if (!this.parsetableidx()) { _ok_22 = false; }
+      }
+      if (_ok_22) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_table_2E_init');
-    this.parsetableidx();
-    this.parseelemidx();
+      let _ok_23 = true;
+    if (!this.consume('TOKEN_table_2E_init')) { _ok_23 = false; }
+      if (_ok_23) {
+    if (!this.parsetableidx()) { _ok_23 = false; }
+      }
+      if (_ok_23) {
+    if (!this.parseelemidx()) { _ok_23 = false; }
+      }
+      if (_ok_23) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_elem_2E_drop');
-    this.parseelemidx();
+      let _ok_24 = true;
+    if (!this.consume('TOKEN_elem_2E_drop')) { _ok_24 = false; }
+      if (_ok_24) {
+    if (!this.parseelemidx()) { _ok_24 = false; }
+      }
+      if (_ok_24) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_size');
+      let _ok_25 = true;
+    if (!this.consume('TOKEN_memory_2E_size')) { _ok_25 = false; }
+      if (_ok_25) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_25) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_grow');
+      let _ok_26 = true;
+    if (!this.consume('TOKEN_memory_2E_grow')) { _ok_26 = false; }
+      if (_ok_26) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_26) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_fill');
+      let _ok_27 = true;
+    if (!this.consume('TOKEN_memory_2E_fill')) { _ok_27 = false; }
+      if (_ok_27) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_27) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_copy');
+      let _ok_28 = true;
+    if (!this.consume('TOKEN_memory_2E_copy')) { _ok_28 = false; }
+      if (_ok_28) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_28) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_28) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_init');
-    this.parsememidx();
-    this.parsedataidx();
+      let _ok_29 = true;
+    if (!this.consume('TOKEN_memory_2E_init')) { _ok_29 = false; }
+      if (_ok_29) {
+    if (!this.parsememidx()) { _ok_29 = false; }
+      }
+      if (_ok_29) {
+    if (!this.parsedataidx()) { _ok_29 = false; }
+      }
+      if (_ok_29) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_memory_2E_init');
-    this.parsedataidx();
+      let _ok_30 = true;
+    if (!this.consume('TOKEN_memory_2E_init')) { _ok_30 = false; }
+      if (_ok_30) {
+    if (!this.parsedataidx()) { _ok_30 = false; }
+      }
+      if (_ok_30) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_data_2E_drop');
-    this.parsedataidx();
+      let _ok_31 = true;
+    if (!this.consume('TOKEN_data_2E_drop')) { _ok_31 = false; }
+      if (_ok_31) {
+    if (!this.parsedataidx()) { _ok_31 = false; }
+      }
+      if (_ok_31) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_null');
-    this.parseheaptype();
+      let _ok_32 = true;
+    if (!this.consume('TOKEN_ref_2E_null')) { _ok_32 = false; }
+      if (_ok_32) {
+    if (!this.parseheaptype()) { _ok_32 = false; }
+      }
+      if (_ok_32) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_func');
-    this.parsefuncidx();
+      let _ok_33 = true;
+    if (!this.consume('TOKEN_ref_2E_func')) { _ok_33 = false; }
+      if (_ok_33) {
+    if (!this.parsefuncidx()) { _ok_33 = false; }
+      }
+      if (_ok_33) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_is_5F_null');
+      let _ok_34 = true;
+    if (!this.consume('TOKEN_ref_2E_is_5F_null')) { _ok_34 = false; }
+      if (_ok_34) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_as_5F_non_5F_null');
+      let _ok_35 = true;
+    if (!this.consume('TOKEN_ref_2E_as_5F_non_5F_null')) { _ok_35 = false; }
+      if (_ok_35) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_eq');
+      let _ok_36 = true;
+    if (!this.consume('TOKEN_ref_2E_eq')) { _ok_36 = false; }
+      if (_ok_36) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_test');
-    this.parsereftype();
+      let _ok_37 = true;
+    if (!this.consume('TOKEN_ref_2E_test')) { _ok_37 = false; }
+      if (_ok_37) {
+    if (!this.parsereftype()) { _ok_37 = false; }
+      }
+      if (_ok_37) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_cast');
-    this.parsereftype();
+      let _ok_38 = true;
+    if (!this.consume('TOKEN_ref_2E_cast')) { _ok_38 = false; }
+      if (_ok_38) {
+    if (!this.parsereftype()) { _ok_38 = false; }
+      }
+      if (_ok_38) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_new');
-    this.parsetypeidx();
+      let _ok_39 = true;
+    if (!this.consume('TOKEN_struct_2E_new')) { _ok_39 = false; }
+      if (_ok_39) {
+    if (!this.parsetypeidx()) { _ok_39 = false; }
+      }
+      if (_ok_39) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_new_5F_default');
-    this.parsetypeidx();
+      let _ok_40 = true;
+    if (!this.consume('TOKEN_struct_2E_new_5F_default')) { _ok_40 = false; }
+      if (_ok_40) {
+    if (!this.parsetypeidx()) { _ok_40 = false; }
+      }
+      if (_ok_40) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_get');
-    this.parsetypeidx();
-    this.parsefieldidx();
+      let _ok_41 = true;
+    if (!this.consume('TOKEN_struct_2E_get')) { _ok_41 = false; }
+      if (_ok_41) {
+    if (!this.parsetypeidx()) { _ok_41 = false; }
+      }
+      if (_ok_41) {
+    if (!this.parsefieldidx()) { _ok_41 = false; }
+      }
+      if (_ok_41) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_get_5F_s');
-    this.parsetypeidx();
-    this.parsefieldidx();
+      let _ok_42 = true;
+    if (!this.consume('TOKEN_struct_2E_get_5F_s')) { _ok_42 = false; }
+      if (_ok_42) {
+    if (!this.parsetypeidx()) { _ok_42 = false; }
+      }
+      if (_ok_42) {
+    if (!this.parsefieldidx()) { _ok_42 = false; }
+      }
+      if (_ok_42) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_get_5F_u');
-    this.parsetypeidx();
-    this.parsefieldidx();
+      let _ok_43 = true;
+    if (!this.consume('TOKEN_struct_2E_get_5F_u')) { _ok_43 = false; }
+      if (_ok_43) {
+    if (!this.parsetypeidx()) { _ok_43 = false; }
+      }
+      if (_ok_43) {
+    if (!this.parsefieldidx()) { _ok_43 = false; }
+      }
+      if (_ok_43) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct_2E_set');
-    this.parsetypeidx();
-    this.parsefieldidx();
+      let _ok_44 = true;
+    if (!this.consume('TOKEN_struct_2E_set')) { _ok_44 = false; }
+      if (_ok_44) {
+    if (!this.parsetypeidx()) { _ok_44 = false; }
+      }
+      if (_ok_44) {
+    if (!this.parsefieldidx()) { _ok_44 = false; }
+      }
+      if (_ok_44) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_new');
-    this.parsetypeidx();
+      let _ok_45 = true;
+    if (!this.consume('TOKEN_array_2E_new')) { _ok_45 = false; }
+      if (_ok_45) {
+    if (!this.parsetypeidx()) { _ok_45 = false; }
+      }
+      if (_ok_45) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_new_5F_default');
-    this.parsetypeidx();
+      let _ok_46 = true;
+    if (!this.consume('TOKEN_array_2E_new_5F_default')) { _ok_46 = false; }
+      if (_ok_46) {
+    if (!this.parsetypeidx()) { _ok_46 = false; }
+      }
+      if (_ok_46) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_new_5F_fixed');
-    this.parsetypeidx();
-    this.consume('nat');
+      let _ok_47 = true;
+    if (!this.consume('TOKEN_array_2E_new_5F_fixed')) { _ok_47 = false; }
+      if (_ok_47) {
+    if (!this.parsetypeidx()) { _ok_47 = false; }
+      }
+      if (_ok_47) {
+    if (!this.consume('nat')) { _ok_47 = false; }
+      }
+      if (_ok_47) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_new_5F_data');
-    this.parsetypeidx();
-    this.parsedataidx();
+      let _ok_48 = true;
+    if (!this.consume('TOKEN_array_2E_new_5F_data')) { _ok_48 = false; }
+      if (_ok_48) {
+    if (!this.parsetypeidx()) { _ok_48 = false; }
+      }
+      if (_ok_48) {
+    if (!this.parsedataidx()) { _ok_48 = false; }
+      }
+      if (_ok_48) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_new_5F_elem');
-    this.parsetypeidx();
-    this.parseelemidx();
+      let _ok_49 = true;
+    if (!this.consume('TOKEN_array_2E_new_5F_elem')) { _ok_49 = false; }
+      if (_ok_49) {
+    if (!this.parsetypeidx()) { _ok_49 = false; }
+      }
+      if (_ok_49) {
+    if (!this.parseelemidx()) { _ok_49 = false; }
+      }
+      if (_ok_49) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_get');
-    this.parsetypeidx();
+      let _ok_50 = true;
+    if (!this.consume('TOKEN_array_2E_get')) { _ok_50 = false; }
+      if (_ok_50) {
+    if (!this.parsetypeidx()) { _ok_50 = false; }
+      }
+      if (_ok_50) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_get_5F_s');
-    this.parsetypeidx();
+      let _ok_51 = true;
+    if (!this.consume('TOKEN_array_2E_get_5F_s')) { _ok_51 = false; }
+      if (_ok_51) {
+    if (!this.parsetypeidx()) { _ok_51 = false; }
+      }
+      if (_ok_51) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_get_5F_u');
-    this.parsetypeidx();
+      let _ok_52 = true;
+    if (!this.consume('TOKEN_array_2E_get_5F_u')) { _ok_52 = false; }
+      if (_ok_52) {
+    if (!this.parsetypeidx()) { _ok_52 = false; }
+      }
+      if (_ok_52) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_set');
-    this.parsetypeidx();
+      let _ok_53 = true;
+    if (!this.consume('TOKEN_array_2E_set')) { _ok_53 = false; }
+      if (_ok_53) {
+    if (!this.parsetypeidx()) { _ok_53 = false; }
+      }
+      if (_ok_53) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_len');
+      let _ok_54 = true;
+    if (!this.consume('TOKEN_array_2E_len')) { _ok_54 = false; }
+      if (_ok_54) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_fill');
-    this.parsetypeidx();
+      let _ok_55 = true;
+    if (!this.consume('TOKEN_array_2E_fill')) { _ok_55 = false; }
+      if (_ok_55) {
+    if (!this.parsetypeidx()) { _ok_55 = false; }
+      }
+      if (_ok_55) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_copy');
-    this.parsetypeidx();
-    this.parsetypeidx();
+      let _ok_56 = true;
+    if (!this.consume('TOKEN_array_2E_copy')) { _ok_56 = false; }
+      if (_ok_56) {
+    if (!this.parsetypeidx()) { _ok_56 = false; }
+      }
+      if (_ok_56) {
+    if (!this.parsetypeidx()) { _ok_56 = false; }
+      }
+      if (_ok_56) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_init_5F_data');
-    this.parsetypeidx();
-    this.parsedataidx();
+      let _ok_57 = true;
+    if (!this.consume('TOKEN_array_2E_init_5F_data')) { _ok_57 = false; }
+      if (_ok_57) {
+    if (!this.parsetypeidx()) { _ok_57 = false; }
+      }
+      if (_ok_57) {
+    if (!this.parsedataidx()) { _ok_57 = false; }
+      }
+      if (_ok_57) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array_2E_init_5F_elem');
-    this.parsetypeidx();
-    this.parseelemidx();
+      let _ok_58 = true;
+    if (!this.consume('TOKEN_array_2E_init_5F_elem')) { _ok_58 = false; }
+      if (_ok_58) {
+    if (!this.parsetypeidx()) { _ok_58 = false; }
+      }
+      if (_ok_58) {
+    if (!this.parseelemidx()) { _ok_58 = false; }
+      }
+      if (_ok_58) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_ref_2E_i31');
+      let _ok_59 = true;
+    if (!this.consume('TOKEN_ref_2E_i31')) { _ok_59 = false; }
+      if (_ok_59) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i31_2E_get_5F_s');
+      let _ok_60 = true;
+    if (!this.consume('TOKEN_i31_2E_get_5F_s')) { _ok_60 = false; }
+      if (_ok_60) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i31_2E_get_5F_u');
+      let _ok_61 = true;
+    if (!this.consume('TOKEN_i31_2E_get_5F_u')) { _ok_61 = false; }
+      if (_ok_61) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_any_2E_convert_5F_extern');
+      let _ok_62 = true;
+    if (!this.consume('TOKEN_any_2E_convert_5F_extern')) { _ok_62 = false; }
+      if (_ok_62) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_extern_2E_convert_5F_any');
+      let _ok_63 = true;
+    if (!this.consume('TOKEN_extern_2E_convert_5F_any')) { _ok_63 = false; }
+      if (_ok_63) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_call');
-    this.parsefuncidx();
+      let _ok_64 = true;
+    if (!this.consume('TOKEN_call')) { _ok_64 = false; }
+      if (_ok_64) {
+    if (!this.parsefuncidx()) { _ok_64 = false; }
+      }
+      if (_ok_64) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_call_5F_ref');
-    this.parsetypeidx();
+      let _ok_65 = true;
+    if (!this.consume('TOKEN_call_5F_ref')) { _ok_65 = false; }
+      if (_ok_65) {
+    if (!this.parsetypeidx()) { _ok_65 = false; }
+      }
+      if (_ok_65) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_call_5F_indirect');
+      let _ok_66 = true;
+    if (!this.consume('TOKEN_call_5F_indirect')) { _ok_66 = false; }
+      if (_ok_66) {
     // Optional: try parsing tableidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsetableidx();
-      } catch(e) {
+      if (!this.parsetableidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsetypeuse();
+      }
+      if (_ok_66) {
+    if (!this.parsetypeuse()) { _ok_66 = false; }
+      }
+      if (_ok_66) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_return_5F_call');
-    this.parsefuncidx();
+      let _ok_67 = true;
+    if (!this.consume('TOKEN_return_5F_call')) { _ok_67 = false; }
+      if (_ok_67) {
+    if (!this.parsefuncidx()) { _ok_67 = false; }
+      }
+      if (_ok_67) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_return_5F_call_5F_ref');
-    this.parsetypeidx();
+      let _ok_68 = true;
+    if (!this.consume('TOKEN_return_5F_call_5F_ref')) { _ok_68 = false; }
+      if (_ok_68) {
+    if (!this.parsetypeidx()) { _ok_68 = false; }
+      }
+      if (_ok_68) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_return_5F_call_5F_indirect');
+      let _ok_69 = true;
+    if (!this.consume('TOKEN_return_5F_call_5F_indirect')) { _ok_69 = false; }
+      if (_ok_69) {
     // Optional: try parsing tableidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsetableidx();
-      } catch(e) {
+      if (!this.parsetableidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parsetypeuse();
+      }
+      if (_ok_69) {
+    if (!this.parsetypeuse()) { _ok_69 = false; }
+      }
+      if (_ok_69) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br');
-    this.parselabelidx();
+      let _ok_70 = true;
+    if (!this.consume('TOKEN_br')) { _ok_70 = false; }
+      if (_ok_70) {
+    if (!this.parselabelidx()) { _ok_70 = false; }
+      }
+      if (_ok_70) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_if');
-    this.parselabelidx();
+      let _ok_71 = true;
+    if (!this.consume('TOKEN_br_5F_if')) { _ok_71 = false; }
+      if (_ok_71) {
+    if (!this.parselabelidx()) { _ok_71 = false; }
+      }
+      if (_ok_71) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_table');
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parselabelidx();
+      let _ok_72 = true;
+    if (!this.consume('TOKEN_br_5F_table')) { _ok_72 = false; }
+      if (_ok_72) {
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parselabelidx()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        _ok_72 = false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
+      }
+      if (_ok_72) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_on_5F_null');
-    this.parselabelidx();
+      let _ok_73 = true;
+    if (!this.consume('TOKEN_br_5F_on_5F_null')) { _ok_73 = false; }
+      if (_ok_73) {
+    if (!this.parselabelidx()) { _ok_73 = false; }
+      }
+      if (_ok_73) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_on_5F_non_5F_null');
-    this.parselabelidx();
+      let _ok_74 = true;
+    if (!this.consume('TOKEN_br_5F_on_5F_non_5F_null')) { _ok_74 = false; }
+      if (_ok_74) {
+    if (!this.parselabelidx()) { _ok_74 = false; }
+      }
+      if (_ok_74) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_on_5F_cast');
-    this.parselabelidx();
-    this.parsereftype();
-    this.parsereftype();
+      let _ok_75 = true;
+    if (!this.consume('TOKEN_br_5F_on_5F_cast')) { _ok_75 = false; }
+      if (_ok_75) {
+    if (!this.parselabelidx()) { _ok_75 = false; }
+      }
+      if (_ok_75) {
+    if (!this.parsereftype()) { _ok_75 = false; }
+      }
+      if (_ok_75) {
+    if (!this.parsereftype()) { _ok_75 = false; }
+      }
+      if (_ok_75) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_br_5F_on_5F_cast_5F_fail');
-    this.parselabelidx();
-    this.parsereftype();
-    this.parsereftype();
+      let _ok_76 = true;
+    if (!this.consume('TOKEN_br_5F_on_5F_cast_5F_fail')) { _ok_76 = false; }
+      if (_ok_76) {
+    if (!this.parselabelidx()) { _ok_76 = false; }
+      }
+      if (_ok_76) {
+    if (!this.parsereftype()) { _ok_76 = false; }
+      }
+      if (_ok_76) {
+    if (!this.parsereftype()) { _ok_76 = false; }
+      }
+      if (_ok_76) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_throw');
-    this.parsetagidx();
+      let _ok_77 = true;
+    if (!this.consume('TOKEN_throw')) { _ok_77 = false; }
+      if (_ok_77) {
+    if (!this.parsetagidx()) { _ok_77 = false; }
+      }
+      if (_ok_77) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_rethrow');
-    this.parselabelidx();
+      let _ok_78 = true;
+    if (!this.consume('TOKEN_rethrow')) { _ok_78 = false; }
+      if (_ok_78) {
+    if (!this.parselabelidx()) { _ok_78 = false; }
+      }
+      if (_ok_78) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('nonBlockInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('nonBlockInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsenumericLikeInstr() {
     const __memoStart = this.position;
     const __memoKey = 'numericLikeInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -5843,95 +6404,106 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('numericLikeInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsenumericLikeInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('numericLikeInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('numericLikeInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsenumericLikeInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('dottedName');
-    this.parsememarg();
+      let _ok_1 = true;
+    if (!this.consume('dottedName')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.parsememarg()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('dottedName');
-    this.consume('float');
+      let _ok_2 = true;
+    if (!this.consume('dottedName')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('float')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('dottedName');
-    this.consume('integer');
+      let _ok_3 = true;
+    if (!this.consume('dottedName')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('integer')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('dottedName');
+      let _ok_4 = true;
+    if (!this.consume('dottedName')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('numericLikeInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('numericLikeInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefloatConstInstr() {
     const __memoStart = this.position;
     const __memoKey = 'floatConstInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -5940,24 +6512,51 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('floatConstInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsefloatConstInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('floatConstInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('floatConstInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefloatConstInstrBody() {
     // Group
     {
       let _matchedAlt = false;
       if (!_matchedAlt) {
         const _altStart = this.position;
         const _altMark = this.markEventState();
-        try {
-    this.consume('TOKEN_f32_2E_const');
+        let _ok_1 = true;
+    if (!this.consume('TOKEN_f32_2E_const')) { _ok_1 = false; }
+        if (_ok_1) {
           _matchedAlt = true;
-        } catch (e) {
+        } else {
           this.position = _altStart;
           this.restoreEventState(_altMark);
         }
@@ -5965,50 +6564,26 @@ class Parser {
       if (!_matchedAlt) {
         const _altStart = this.position;
         const _altMark = this.markEventState();
-        try {
-    this.consume('TOKEN_f64_2E_const');
+        let _ok_2 = true;
+    if (!this.consume('TOKEN_f64_2E_const')) { _ok_2 = false; }
+        if (_ok_2) {
           _matchedAlt = true;
-        } catch (e) {
+        } else {
           this.position = _altStart;
           this.restoreEventState(_altMark);
         }
       }
-      if (!_matchedAlt) { throw __BACKTRACK_ERROR; }
+      if (!_matchedAlt) { return false; }
     }
-    this.parsefloatValue();
+    if (!this.parsefloatValue()) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('floatConstInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('floatConstInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsefloatValue() {
     const __memoStart = this.position;
     const __memoKey = 'floatValue@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6017,83 +6592,89 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('floatValue', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsefloatValueBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('floatValue', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('floatValue', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefloatValueBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('float');
+      let _ok_1 = true;
+    if (!this.consume('float')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('integer');
+      let _ok_2 = true;
+    if (!this.consume('integer')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
+      let _ok_3 = true;
     if (this.match('sign')) { /* optional token matched */ }
-    this.consume('nat');
+      if (_ok_3) {
+    if (!this.consume('nat')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('floatValue', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('floatValue', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememLikeInstr() {
     const __memoStart = this.position;
     const __memoKey = 'memLikeInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6102,59 +6683,58 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memLikeInstr', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('dottedName');
+    const __ok = this._parsememLikeInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memLikeInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memLikeInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememLikeInstrBody() {
+    if (!this.consume('dottedName')) { return false; }
     // Optional: try parsing memarg
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememarg();
-      } catch(e) {
+      if (!this.parsememarg()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memLikeInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memLikeInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememoryAccessInstr() {
     const __memoStart = this.position;
     const __memoKey = 'memoryAccessInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6163,129 +6743,139 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memoryAccessInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsememoryAccessInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memoryAccessInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memoryAccessInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememoryAccessInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememoryOpcode();
+      let _ok_1 = true;
+    if (!this.parsememoryOpcode()) { _ok_1 = false; }
+      if (_ok_1) {
     // Optional: try parsing memidx
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememidx();
-      } catch(e) {
+      if (!this.parsememidx()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
     // Optional: try parsing memarg
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememarg();
-      } catch(e) {
+      if (!this.parsememarg()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememoryLaneOpcode();
-    this.parsememidx();
+      let _ok_2 = true;
+    if (!this.parsememoryLaneOpcode()) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.parsememidx()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
     // Optional: try parsing memarg
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememarg();
-      } catch(e) {
+      if (!this.parsememarg()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parselaneidx();
+      }
+      if (_ok_2) {
+    if (!this.parselaneidx()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsememoryLaneOpcode();
+      let _ok_3 = true;
+    if (!this.parsememoryLaneOpcode()) { _ok_3 = false; }
+      if (_ok_3) {
     // Optional: try parsing memarg
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parsememarg();
-      } catch(e) {
+      if (!this.parsememarg()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.parselaneidx();
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memoryAccessInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memoryAccessInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememoryOpcode() {
     const __memoStart = this.position;
     const __memoKey = 'memoryOpcode@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6294,422 +6884,460 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memoryOpcode', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsememoryOpcodeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memoryOpcode', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memoryOpcode', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememoryOpcodeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_load');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i32_2E_load')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i64_2E_load')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f32_2E_load');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_f32_2E_load')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f64_2E_load');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_f64_2E_load')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_load8_5F_s');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_i32_2E_load8_5F_s')) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_load8_5F_u');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_i32_2E_load8_5F_u')) { _ok_6 = false; }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_load16_5F_s');
+      let _ok_7 = true;
+    if (!this.consume('TOKEN_i32_2E_load16_5F_s')) { _ok_7 = false; }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_load16_5F_u');
+      let _ok_8 = true;
+    if (!this.consume('TOKEN_i32_2E_load16_5F_u')) { _ok_8 = false; }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load8_5F_s');
+      let _ok_9 = true;
+    if (!this.consume('TOKEN_i64_2E_load8_5F_s')) { _ok_9 = false; }
+      if (_ok_9) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load8_5F_u');
+      let _ok_10 = true;
+    if (!this.consume('TOKEN_i64_2E_load8_5F_u')) { _ok_10 = false; }
+      if (_ok_10) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load16_5F_s');
+      let _ok_11 = true;
+    if (!this.consume('TOKEN_i64_2E_load16_5F_s')) { _ok_11 = false; }
+      if (_ok_11) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load16_5F_u');
+      let _ok_12 = true;
+    if (!this.consume('TOKEN_i64_2E_load16_5F_u')) { _ok_12 = false; }
+      if (_ok_12) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load32_5F_s');
+      let _ok_13 = true;
+    if (!this.consume('TOKEN_i64_2E_load32_5F_s')) { _ok_13 = false; }
+      if (_ok_13) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_load32_5F_u');
+      let _ok_14 = true;
+    if (!this.consume('TOKEN_i64_2E_load32_5F_u')) { _ok_14 = false; }
+      if (_ok_14) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_store');
+      let _ok_15 = true;
+    if (!this.consume('TOKEN_i32_2E_store')) { _ok_15 = false; }
+      if (_ok_15) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_store');
+      let _ok_16 = true;
+    if (!this.consume('TOKEN_i64_2E_store')) { _ok_16 = false; }
+      if (_ok_16) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f32_2E_store');
+      let _ok_17 = true;
+    if (!this.consume('TOKEN_f32_2E_store')) { _ok_17 = false; }
+      if (_ok_17) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f64_2E_store');
+      let _ok_18 = true;
+    if (!this.consume('TOKEN_f64_2E_store')) { _ok_18 = false; }
+      if (_ok_18) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_store8');
+      let _ok_19 = true;
+    if (!this.consume('TOKEN_i32_2E_store8')) { _ok_19 = false; }
+      if (_ok_19) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32_2E_store16');
+      let _ok_20 = true;
+    if (!this.consume('TOKEN_i32_2E_store16')) { _ok_20 = false; }
+      if (_ok_20) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_store8');
+      let _ok_21 = true;
+    if (!this.consume('TOKEN_i64_2E_store8')) { _ok_21 = false; }
+      if (_ok_21) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_store16');
+      let _ok_22 = true;
+    if (!this.consume('TOKEN_i64_2E_store16')) { _ok_22 = false; }
+      if (_ok_22) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64_2E_store32');
+      let _ok_23 = true;
+    if (!this.consume('TOKEN_i64_2E_store32')) { _ok_23 = false; }
+      if (_ok_23) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load');
+      let _ok_24 = true;
+    if (!this.consume('TOKEN_v128_2E_load')) { _ok_24 = false; }
+      if (_ok_24) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_store');
+      let _ok_25 = true;
+    if (!this.consume('TOKEN_v128_2E_store')) { _ok_25 = false; }
+      if (_ok_25) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load8x8_5F_s');
+      let _ok_26 = true;
+    if (!this.consume('TOKEN_v128_2E_load8x8_5F_s')) { _ok_26 = false; }
+      if (_ok_26) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load8x8_5F_u');
+      let _ok_27 = true;
+    if (!this.consume('TOKEN_v128_2E_load8x8_5F_u')) { _ok_27 = false; }
+      if (_ok_27) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load16x4_5F_s');
+      let _ok_28 = true;
+    if (!this.consume('TOKEN_v128_2E_load16x4_5F_s')) { _ok_28 = false; }
+      if (_ok_28) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load16x4_5F_u');
+      let _ok_29 = true;
+    if (!this.consume('TOKEN_v128_2E_load16x4_5F_u')) { _ok_29 = false; }
+      if (_ok_29) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load32x2_5F_s');
+      let _ok_30 = true;
+    if (!this.consume('TOKEN_v128_2E_load32x2_5F_s')) { _ok_30 = false; }
+      if (_ok_30) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load32x2_5F_u');
+      let _ok_31 = true;
+    if (!this.consume('TOKEN_v128_2E_load32x2_5F_u')) { _ok_31 = false; }
+      if (_ok_31) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load8_5F_splat');
+      let _ok_32 = true;
+    if (!this.consume('TOKEN_v128_2E_load8_5F_splat')) { _ok_32 = false; }
+      if (_ok_32) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load16_5F_splat');
+      let _ok_33 = true;
+    if (!this.consume('TOKEN_v128_2E_load16_5F_splat')) { _ok_33 = false; }
+      if (_ok_33) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load32_5F_splat');
+      let _ok_34 = true;
+    if (!this.consume('TOKEN_v128_2E_load32_5F_splat')) { _ok_34 = false; }
+      if (_ok_34) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load64_5F_splat');
+      let _ok_35 = true;
+    if (!this.consume('TOKEN_v128_2E_load64_5F_splat')) { _ok_35 = false; }
+      if (_ok_35) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load32_5F_zero');
+      let _ok_36 = true;
+    if (!this.consume('TOKEN_v128_2E_load32_5F_zero')) { _ok_36 = false; }
+      if (_ok_36) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load64_5F_zero');
+      let _ok_37 = true;
+    if (!this.consume('TOKEN_v128_2E_load64_5F_zero')) { _ok_37 = false; }
+      if (_ok_37) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memoryOpcode', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memoryOpcode', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememoryLaneOpcode() {
     const __memoStart = this.position;
     const __memoKey = 'memoryLaneOpcode@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6718,132 +7346,141 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memoryLaneOpcode', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsememoryLaneOpcodeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memoryLaneOpcode', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memoryLaneOpcode', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememoryLaneOpcodeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load8_5F_lane');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_v128_2E_load8_5F_lane')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load16_5F_lane');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_v128_2E_load16_5F_lane')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load32_5F_lane');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_v128_2E_load32_5F_lane')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_load64_5F_lane');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_v128_2E_load64_5F_lane')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_store8_5F_lane');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_v128_2E_store8_5F_lane')) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_store16_5F_lane');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_v128_2E_store16_5F_lane')) { _ok_6 = false; }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_store32_5F_lane');
+      let _ok_7 = true;
+    if (!this.consume('TOKEN_v128_2E_store32_5F_lane')) { _ok_7 = false; }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_store64_5F_lane');
+      let _ok_8 = true;
+    if (!this.consume('TOKEN_v128_2E_store64_5F_lane')) { _ok_8 = false; }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memoryLaneOpcode', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memoryLaneOpcode', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsesimdLikeInstr() {
     const __memoStart = this.position;
     const __memoKey = 'simdLikeInstr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6852,100 +7489,140 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('simdLikeInstr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesimdLikeInstrBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('simdLikeInstr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('simdLikeInstr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesimdLikeInstrBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128_2E_const');
-    this.parsesimdConst();
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_v128_2E_const')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.parsesimdConst()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('dottedName');
-    this.parselaneidx();
+      let _ok_2 = true;
+    if (!this.consume('dottedName')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.parselaneidx()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i8x16_2E_shuffle');
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
-    this.parselaneidx();
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_i8x16_2E_shuffle')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parselaneidx()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('simdLikeInstr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('simdLikeInstr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseblockType() {
     const __memoStart = this.position;
     const __memoKey = 'blockType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -6954,82 +7631,86 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('blockType', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseblockTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('blockType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('blockType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseblockTypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetypeuse();
+      let _ok_1 = true;
+    if (!this.parsetypeuse()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseresultTypes();
+      let _ok_2 = true;
+    if (!this.parseresultTypes()) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsevalueType();
+      let _ok_3 = true;
+    if (!this.parsevalueType()) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('blockType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('blockType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parselabel() {
     const __memoStart = this.position;
     const __memoKey = 'label@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7038,48 +7719,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('label', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseid();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parselabelBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('label', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('label', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('label', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('label', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselabelBody() {
+    if (!this.parseid()) { return false; }
+
+    return true;
   }
   parsesimdConst() {
     const __memoStart = this.position;
     const __memoKey = 'simdConst@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7088,148 +7770,227 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('simdConst', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesimdConstBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('simdConst', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('simdConst', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesimdConstBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i8x16');
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i8x16')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsesignedNat()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i16x8');
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i16x8')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
+    if (!this.parsesignedNat()) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32x4');
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
-    this.parsesignedNat();
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_i32x4')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.parsesignedNat()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parsesignedNat()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parsesignedNat()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
+    if (!this.parsesignedNat()) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64x2');
-    this.parsesignedNat();
-    this.parsesignedNat();
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_i64x2')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.parsesignedNat()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
+    if (!this.parsesignedNat()) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f32x4');
-    this.parsefloatValue();
-    this.parsefloatValue();
-    this.parsefloatValue();
-    this.parsefloatValue();
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_f32x4')) { _ok_5 = false; }
+      if (_ok_5) {
+    if (!this.parsefloatValue()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.parsefloatValue()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.parsefloatValue()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
+    if (!this.parsefloatValue()) { _ok_5 = false; }
+      }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f64x2');
-    this.parsefloatValue();
-    this.parsefloatValue();
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_f64x2')) { _ok_6 = false; }
+      if (_ok_6) {
+    if (!this.parsefloatValue()) { _ok_6 = false; }
+      }
+      if (_ok_6) {
+    if (!this.parsefloatValue()) { _ok_6 = false; }
+      }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('simdConst', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('simdConst', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetypeuse() {
     const __memoStart = this.position;
     const __memoKey = 'typeuse@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7238,153 +7999,163 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('typeuse', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsetypeuseBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('typeuse', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('typeuse', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetypeuseBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_type');
-    this.parsetypeidx();
-    this.consume('TOKEN__29_');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_type')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.parsetypeidx()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseparamDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseparamDecl()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_1) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseresultDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseresultDecl()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseparamDecl();
+      let _ok_2 = true;
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parseparamDecl()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        _ok_2 = false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
+      if (_ok_2) {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseresultDecl();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseresultDecl()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parseresultDecl();
+      let _ok_3 = true;
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parseresultDecl()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        _ok_3 = false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('typeuse', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('typeuse', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseparamDecl() {
     const __memoStart = this.position;
     const __memoKey = 'paramDecl@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7393,78 +8164,77 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('paramDecl', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_param');
+    const __ok = this._parseparamDeclBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('paramDecl', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('paramDecl', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseparamDeclBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_param')) { return false; }
     // Optional: try parsing id
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseid();
-      } catch(e) {
+      if (!this.parseid()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parsevalueType();
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parsevalueType()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        return false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('paramDecl', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('paramDecl', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseresultDecl() {
     const __memoStart = this.position;
     const __memoKey = 'resultDecl@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7473,67 +8243,68 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('resultDecl', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_result');
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parsevalueType();
+    const __ok = this._parseresultDeclBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('resultDecl', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('resultDecl', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseresultDeclBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_result')) { return false; }
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parsevalueType()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        return false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('resultDecl', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('resultDecl', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseresultTypes() {
     const __memoStart = this.position;
     const __memoKey = 'resultTypes@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7542,67 +8313,68 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('resultTypes', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_result');
-    let count = 0;
-    while (true) {
-      const savePos = this.position;
-      const saveMark = this.markEventState();
-      try {
-        this.parsevalueType();
+    const __ok = this._parseresultTypesBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('resultTypes', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('resultTypes', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseresultTypesBody() {
+    if (!this.consume('TOKEN__28_')) { return false; }
+    if (!this.consume('TOKEN_result')) { return false; }
+    {
+      let count = 0;
+      while (true) {
+        const savePos = this.position;
+        const saveMark = this.markEventState();
+        if (!this.parsevalueType()) {
+          this.position = savePos;
+          this.restoreEventState(saveMark);
+          break;
+        }
         if (this.position === savePos) break;
         count++;
-      } catch(e) {
-        this.position = savePos;
-        this.restoreEventState(saveMark);
-        break;
+      }
+      if (count === 0) {
+        return false;
       }
     }
-    if (count === 0) {
-      throw __BACKTRACK_ERROR;
-    }
-    this.consume('TOKEN__29_');
+    if (!this.consume('TOKEN__29_')) { return false; }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('resultTypes', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('resultTypes', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseheaptype() {
     const __memoStart = this.position;
     const __memoKey = 'heaptype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7611,212 +8383,229 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('heaptype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseheaptypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('heaptype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('heaptype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseheaptypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_any');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_any')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_eq');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_eq')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i31');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_i31')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_struct');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_struct')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_array');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_array')) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_none');
+      let _ok_6 = true;
+    if (!this.consume('TOKEN_none')) { _ok_6 = false; }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_func');
+      let _ok_7 = true;
+    if (!this.consume('TOKEN_func')) { _ok_7 = false; }
+      if (_ok_7) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_nofunc');
+      let _ok_8 = true;
+    if (!this.consume('TOKEN_nofunc')) { _ok_8 = false; }
+      if (_ok_8) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_exn');
+      let _ok_9 = true;
+    if (!this.consume('TOKEN_exn')) { _ok_9 = false; }
+      if (_ok_9) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_noexn');
+      let _ok_10 = true;
+    if (!this.consume('TOKEN_noexn')) { _ok_10 = false; }
+      if (_ok_10) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_extern');
+      let _ok_11 = true;
+    if (!this.consume('TOKEN_extern')) { _ok_11 = false; }
+      if (_ok_11) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_noextern');
+      let _ok_12 = true;
+    if (!this.consume('TOKEN_noextern')) { _ok_12 = false; }
+      if (_ok_12) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_funcref');
+      let _ok_13 = true;
+    if (!this.consume('TOKEN_funcref')) { _ok_13 = false; }
+      if (_ok_13) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_externref');
+      let _ok_14 = true;
+    if (!this.consume('TOKEN_externref')) { _ok_14 = false; }
+      if (_ok_14) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_exnref');
+      let _ok_15 = true;
+    if (!this.consume('TOKEN_exnref')) { _ok_15 = false; }
+      if (_ok_15) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsetypeidx();
+      let _ok_16 = true;
+    if (!this.parsetypeidx()) { _ok_16 = false; }
+      if (_ok_16) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('heaptype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('heaptype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsereftype() {
     const __memoStart = this.position;
     const __memoKey = 'reftype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7825,96 +8614,109 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('reftype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsereftypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('reftype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('reftype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsereftypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__28_');
-    this.consume('TOKEN_ref');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__28_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('TOKEN_ref')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     if (this.match('TOKEN_null')) { /* optional matched */ }
-    this.parseheaptype();
-    this.consume('TOKEN__29_');
+      }
+      if (_ok_1) {
+    if (!this.parseheaptype()) { _ok_1 = false; }
+      }
+      if (_ok_1) {
+    if (!this.consume('TOKEN__29_')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_funcref');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_funcref')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_externref');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_externref')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_exnref');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_exnref')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('reftype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('reftype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsevalueType() {
     const __memoStart = this.position;
     const __memoKey = 'valueType@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -7923,112 +8725,119 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('valueType', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsevalueTypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('valueType', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('valueType', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsevalueTypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i32')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i64')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f32');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_f32')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f64');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_f64')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_v128');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_v128')) { _ok_5 = false; }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parsereftype();
+      let _ok_6 = true;
+    if (!this.parsereftype()) { _ok_6 = false; }
+      if (_ok_6) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('valueType', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('valueType', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseid() {
     const __memoStart = this.position;
     const __memoKey = 'id@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8037,48 +8846,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('id', this.position);
     }
-    let __ok = false;
-    try {
-    this.consumeContextual('identifier');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseidBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('id', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('id', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('id', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('id', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseidBody() {
+    if (!this.consumeContextual('identifier')) { return false; }
+
+    return true;
   }
   parseindex() {
     const __memoStart = this.position;
     const __memoKey = 'index@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8087,72 +8897,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('index', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseindexBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('index', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('index', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseindexBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.parseid();
+      let _ok_1 = true;
+    if (!this.parseid()) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('nat');
+      let _ok_2 = true;
+    if (!this.consume('nat')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('index', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('index', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsetypeidx() {
     const __memoStart = this.position;
     const __memoKey = 'typeidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8161,48 +8974,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('typeidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetypeidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('typeidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('typeidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('typeidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('typeidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetypeidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsefuncidx() {
     const __memoStart = this.position;
     const __memoKey = 'funcidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8211,48 +9025,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('funcidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsefuncidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('funcidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('funcidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('funcidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('funcidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefuncidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsetableidx() {
     const __memoStart = this.position;
     const __memoKey = 'tableidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8261,48 +9076,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tableidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetableidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tableidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tableidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tableidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tableidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetableidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsememidx() {
     const __memoStart = this.position;
     const __memoKey = 'memidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8311,48 +9127,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsememidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsetagidx() {
     const __memoStart = this.position;
     const __memoKey = 'tagidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8361,48 +9178,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('tagidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsetagidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('tagidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('tagidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('tagidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('tagidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsetagidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parseelemidx() {
     const __memoStart = this.position;
     const __memoKey = 'elemidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8411,48 +9229,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('elemidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseelemidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('elemidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('elemidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('elemidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('elemidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseelemidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsedataidx() {
     const __memoStart = this.position;
     const __memoKey = 'dataidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8461,48 +9280,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('dataidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsedataidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('dataidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('dataidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('dataidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('dataidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsedataidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parselabelidx() {
     const __memoStart = this.position;
     const __memoKey = 'labelidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8511,48 +9331,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('labelidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parselabelidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('labelidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('labelidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('labelidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('labelidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselabelidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsefieldidx() {
     const __memoStart = this.position;
     const __memoKey = 'fieldidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8561,48 +9382,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('fieldidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.parseindex();
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parsefieldidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('fieldidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('fieldidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('fieldidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('fieldidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsefieldidxBody() {
+    if (!this.parseindex()) { return false; }
+
+    return true;
   }
   parsesignedNat() {
     const __memoStart = this.position;
     const __memoKey = 'signedNat@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8611,73 +9433,78 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('signedNat', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesignedNatBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('signedNat', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('signedNat', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesignedNatBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('integer');
+      let _ok_1 = true;
+    if (!this.consume('integer')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
+      let _ok_2 = true;
     if (this.match('sign')) { /* optional token matched */ }
-    this.consume('nat');
+      if (_ok_2) {
+    if (!this.consume('nat')) { _ok_2 = false; }
+      }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('signedNat', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('signedNat', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsent() {
     const __memoStart = this.position;
     const __memoKey = 'nt@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8686,92 +9513,97 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('nt', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsentBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('nt', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('nt', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsentBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i32')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i64')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f32');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_f32')) { _ok_3 = false; }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_f64');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_f64')) { _ok_4 = false; }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('nt', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('nt', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsesz() {
     const __memoStart = this.position;
     const __memoKey = 'sz@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8780,48 +9612,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('sz', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('nat');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parseszBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('sz', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('sz', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('sz', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('sz', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseszBody() {
+    if (!this.consume('nat')) { return false; }
+
+    return true;
   }
   parsesx() {
     const __memoStart = this.position;
     const __memoKey = 'sx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8830,72 +9663,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('sx', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsesxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('sx', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('sx', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsesxBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__5F_s');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN__5F_s')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN__5F_u');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN__5F_u')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('sx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('sx', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parselimits() {
     const __memoStart = this.position;
     const __memoKey = 'limits@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8904,60 +9740,59 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('limits', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parselimitsBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('limits', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('limits', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselimitsBody() {
     // Optional: try parsing addrtype
     {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseaddrtype();
-      } catch(e) {
+      if (!this.parseaddrtype()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
       }
     }
-    this.consume('nat');
+    if (!this.consume('nat')) { return false; }
     if (this.match('nat')) { /* optional token matched */ }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('limits', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('limits', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parseaddrtype() {
     const __memoStart = this.position;
     const __memoKey = 'addrtype@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -8966,72 +9801,75 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('addrtype', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseaddrtypeBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('addrtype', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('addrtype', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseaddrtypeBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i32');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_i32')) { _ok_1 = false; }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_i64');
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_i64')) { _ok_2 = false; }
+      if (_ok_2) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('addrtype', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('addrtype', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parsememarg() {
     const __memoStart = this.position;
     const __memoKey = 'memarg@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -9040,108 +9878,125 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('memarg', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parsememargBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('memarg', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('memarg', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parsememargBody() {
     const _ruleStart = this.position;
     let _matched = false;
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_offset_3D_');
-    this.consume('nat');
+      let _ok_1 = true;
+    if (!this.consume('TOKEN_offset_3D_')) { _ok_1 = false; }
+      if (_ok_1) {
+    if (!this.consume('nat')) { _ok_1 = false; }
+      }
+      if (_ok_1) {
     // Group ?
     {
       const _optStart = this.position;
       const _optMark = this.markEventState();
-      try {
-    this.consume('TOKEN_align_3D_');
-    this.consume('nat');
-      } catch (e) {
+      let _ok_2 = true;
+    if (!this.consume('TOKEN_align_3D_')) { _ok_2 = false; }
+      if (_ok_2) {
+    if (!this.consume('nat')) { _ok_2 = false; }
+      }
+      if (!_ok_2) {
         this.position = _optStart;
         this.restoreEventState(_optMark);
       }
     }
+      }
+      if (_ok_1) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_align_3D_');
-    this.consume('nat');
+      let _ok_3 = true;
+    if (!this.consume('TOKEN_align_3D_')) { _ok_3 = false; }
+      if (_ok_3) {
+    if (!this.consume('nat')) { _ok_3 = false; }
+      }
+      if (_ok_3) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_offset_3D_');
-    this.consume('nat');
+      let _ok_4 = true;
+    if (!this.consume('TOKEN_offset_3D_')) { _ok_4 = false; }
+      if (_ok_4) {
+    if (!this.consume('nat')) { _ok_4 = false; }
+      }
+      if (_ok_4) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
       const _ruleMark = this.markEventState();
-      try {
-    this.consume('TOKEN_align_3D_');
-    this.consume('nat');
+      let _ok_5 = true;
+    if (!this.consume('TOKEN_align_3D_')) { _ok_5 = false; }
+      if (_ok_5) {
+    if (!this.consume('nat')) { _ok_5 = false; }
+      }
+      if (_ok_5) {
         _matched = true;
-      } catch (e) {
+      } else {
         this.position = _ruleStart;
         this.restoreEventState(_ruleMark);
       }
     }
     if (!_matched) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('memarg', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('memarg', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
   parselaneidx() {
     const __memoStart = this.position;
     const __memoKey = 'laneidx@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -9150,48 +10005,49 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('laneidx', this.position);
     }
-    let __ok = false;
-    try {
-    this.consume('nat');
-
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
+    const __ok = this._parselaneidxBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
       }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('laneidx', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('laneidx', this.position);
-        }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('laneidx', this.position);
       }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('laneidx', this.position);
       }
     }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parselaneidxBody() {
+    if (!this.consume('nat')) { return false; }
+
+    return true;
   }
   parseexpr() {
     const __memoStart = this.position;
     const __memoKey = 'expr@' + __memoStart;
     if (this.failureMemo.has(__memoKey)) {
-      throw __BACKTRACK_ERROR;
+      return false;
     }
     if (this._canMemoSuccess) {
       const __memoHit = this.successMemo.get(__memoKey);
@@ -9200,53 +10056,52 @@ class Parser {
         if (this.eventHandler && __memoHit.node) {
           this.eventHandler.appendNode(__memoHit.node);
         }
-        return;
+        return true;
       }
     }
     if (this.eventHandler && typeof this.eventHandler.startNonterminal === 'function') {
       this.eventHandler.startNonterminal('expr', this.position);
     }
-    let __ok = false;
-    try {
+    const __ok = this._parseexprBody();
+    if (!__ok) {
+      if (this.failureMemo.size > 200000) {
+        this.failureMemo.clear();
+      }
+      this.failureMemo.add(__memoKey);
+    }
+    if (this.eventHandler) {
+      if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
+        this.eventHandler.endNonterminal('expr', this.position);
+      }
+      if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
+        this.eventHandler.abortNonterminal('expr', this.position);
+      }
+    }
+    if (__ok && this._canMemoSuccess) {
+      if (this.successMemo.size > 200000) {
+        this.successMemo.clear();
+      }
+      this.successMemo.set(__memoKey, {
+        endPos: this.position,
+        node: this.eventHandler ? this.eventHandler.lastClosedNode : null
+      });
+    }
+    return __ok;
+  }
+
+  _parseexprBody() {
     while (true) {
       const savePos = this.position;
       const saveMark = this.markEventState();
-      try {
-        this.parseinstr();
-        if (this.position === savePos) break;
-      } catch(e) {
+      if (!this.parseinstr()) {
         this.position = savePos;
         this.restoreEventState(saveMark);
         break;
       }
+      if (this.position === savePos) break;
     }
 
-      __ok = true;
-    } finally {
-      if (!__ok) {
-        if (this.failureMemo.size > 200000) {
-          this.failureMemo.clear();
-        }
-        this.failureMemo.add(__memoKey);
-      }
-      if (this.eventHandler) {
-        if (__ok && typeof this.eventHandler.endNonterminal === 'function') {
-          this.eventHandler.endNonterminal('expr', this.position);
-        }
-        if (!__ok && typeof this.eventHandler.abortNonterminal === 'function') {
-          this.eventHandler.abortNonterminal('expr', this.position);
-        }
-      }
-      if (__ok && this._canMemoSuccess) {
-        if (this.successMemo.size > 200000) {
-          this.successMemo.clear();
-        }
-        this.successMemo.set(__memoKey, {
-          endPos: this.position,
-          node: this.eventHandler ? this.eventHandler.lastClosedNode : null
-        });
-      }
-    }
+    return true;
   }
 }
 
